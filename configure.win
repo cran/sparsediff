@@ -1,0 +1,9 @@
+#!/bin/sh
+# Generate src/Makevars.win from src/Makevars.in.
+#
+# ccache is left disabled on Windows for now (Rtools ccache setup is not
+# assumed); the template is used verbatim with the @CCACHE@ line blanked.
+
+sed -e "s|@CCACHE@||g" src/Makevars.in > src/Makevars.win
+
+exit 0

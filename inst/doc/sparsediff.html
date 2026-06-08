@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Sparse derivatives with sparsediff</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Sparse derivatives with sparsediff</h1>
+
+
+
+<div id="what-sparsediff-is" class="section level2">
+<h2>What sparsediff is</h2>
+<p><strong>sparsediff</strong> is a thin R interface to the <a href="https://github.com/SparseDifferentiation/SparseDiffEngine">SparseDiffEngine</a>
+C library — the sparse Jacobian and Hessian differentiation backend used
+by CVXPY for its Disciplined Nonlinear Programming (DNLP) extension. It
+is the R analog of the Python <code>sparsediffpy</code> package and
+wraps the same C library.</p>
+<p>You build a nonlinear <strong>expression graph</strong> out of the
+<code>sd_*</code> atom constructors, assemble the pieces into a
+<strong>problem</strong>, and then evaluate, at any primal point,</p>
+<ul>
+<li>the objective value and its dense <strong>gradient</strong>,</li>
+<li>the constraint vector and its sparse <strong>Jacobian</strong> (in
+COO form), and</li>
+<li>the lower-triangular <strong>Lagrangian Hessian</strong> (in COO
+form).</li>
+</ul>
+<p>This is a low-level backend: the intended user is a higher-level
+modelling layer such as <strong>CVXR</strong>, not an analyst writing
+models by hand. The walk-through below shows the moving parts.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">library</span>(sparsediff)</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="fu">engine_version</span>()</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="co">#&gt; [1] &quot;0.3.0&quot;</span></span></code></pre></div>
+</div>
+<div id="building-an-expression-graph" class="section level2">
+<h2>Building an expression graph</h2>
+<p>Leaves are created with <code>sd_variable()</code> (a slice of the
+differentiation vector) and <code>sd_parameter()</code> (fixed data).
+Everything else is an atom applied to other expressions. Each
+constructor returns an <strong>expression handle</strong> — an external
+pointer into the engine’s graph that frees itself when garbage
+collected.</p>
+<p>Here is <code>f(x) = sum(exp(x))</code> for a length-3 variable, with
+a single linear constraint <code>g(x) = sum(x)</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a>n   <span class="ot">&lt;-</span> <span class="dv">3</span><span class="dt">L</span></span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>x   <span class="ot">&lt;-</span> <span class="fu">sd_variable</span>(<span class="at">d1 =</span> n, <span class="at">d2 =</span> <span class="dv">1</span><span class="dt">L</span>, <span class="at">var_id =</span> <span class="dv">0</span><span class="dt">L</span>, <span class="at">n_vars =</span> n)  <span class="co"># 0-based var offset</span></span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">sd_sum</span>(<span class="fu">sd_exp</span>(x), <span class="at">axis =</span> <span class="sc">-</span><span class="dv">1</span><span class="dt">L</span>)                          <span class="co"># sum(exp(x))  (axis -1 = all)</span></span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>g1  <span class="ot">&lt;-</span> <span class="fu">sd_sum</span>(x, <span class="at">axis =</span> <span class="sc">-</span><span class="dv">1</span><span class="dt">L</span>)                                  <span class="co"># sum(x)</span></span></code></pre></div>
+<p><code>var_id</code> is the 0-based, column-major offset of the
+variable’s first entry in the flat primal vector; <code>n_vars</code> is
+the total number of variables. Reduction <code>axis</code> follows the
+engine convention: <code>-1</code> (all entries), <code>0</code> (down
+rows), <code>1</code> (across columns).</p>
+</div>
+<div id="assembling-a-problem-and-its-derivative-oracle" class="section level2">
+<h2>Assembling a problem and its derivative oracle</h2>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>prob <span class="ot">&lt;-</span> <span class="fu">sd_problem</span>(<span class="at">objective =</span> obj, <span class="at">constraints =</span> <span class="fu">list</span>(g1), <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="co"># initialise the (structural) derivative layout once</span></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="fu">sd_init_derivatives</span>(prob)</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="fu">sd_init_jacobian_coo</span>(prob)</span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="fu">sd_init_hessian_coo</span>(prob)</span></code></pre></div>
+<p>Sparsity patterns are structural and fixed after these
+<code>sd_init_*</code> calls, so you query them once and reuse them;
+only the <em>values</em> are recomputed at each point.</p>
+</div>
+<div id="evaluating-value-and-derivatives" class="section level2">
+<h2>Evaluating value and derivatives</h2>
+<p>Evaluation is ordered: a <strong>forward pass</strong> populates the
+node values at a primal point <code>u</code>, after which the gradient,
+Jacobian values and Hessian values can be read.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>u <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fl">0.5</span>, <span class="dv">1</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a><span class="fu">sd_objective_forward</span>(prob, u)   <span class="co"># value of sum(exp(x))</span></span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a><span class="co">#&gt; [1] 5.367003</span></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="fu">sd_gradient</span>(prob)               <span class="co"># gradient = exp(u)</span></span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="co">#&gt; [1] 1.000000 1.648721 2.718282</span></span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="fu">sd_constraint_forward</span>(prob, u)  <span class="co"># value of sum(x)</span></span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a><span class="co">#&gt; [1] 1.5</span></span></code></pre></div>
+<p>The constraint Jacobian comes back in COO form (0-based row/column
+indices) plus the matching nonzero values:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="fu">sd_jacobian_sparsity</span>(prob)      <span class="co"># rows / cols / nrow / ncol</span></span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="co">#&gt; $rows</span></span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a><span class="co">#&gt; [1] 0 0 0</span></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a><span class="co">#&gt; $cols</span></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a><span class="co">#&gt; [1] 0 1 2</span></span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a><span class="co">#&gt; $nrow</span></span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a><span class="co">#&gt; [1] 1</span></span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a><span class="co">#&gt; $ncol</span></span>
+<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a><span class="co">#&gt; [1] 3</span></span>
+<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a><span class="fu">sd_jacobian_values</span>(prob)        <span class="co"># d/dx sum(x) = (1, 1, 1)</span></span>
+<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a><span class="co">#&gt; [1] 1 1 1</span></span></code></pre></div>
+<p>The Lagrangian Hessian is the lower triangle of
+<code>obj_w * Hess(f) + sum_i w[i] * Hess(g_i)</code>. Here the
+objective weight is 1 and the constraint is linear (zero Hessian), so
+the result is <code>diag(exp(u))</code>:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="fu">sd_hessian_sparsity</span>(prob)</span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="co">#&gt; $rows</span></span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a><span class="co">#&gt; [1] 0 1 2</span></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a><span class="co">#&gt; $cols</span></span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a><span class="co">#&gt; [1] 0 1 2</span></span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="co">#&gt; $nrow</span></span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a><span class="co">#&gt; [1] 3</span></span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a><span class="co">#&gt; $ncol</span></span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a><span class="co">#&gt; [1] 3</span></span>
+<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a><span class="fu">sd_hessian_values</span>(prob, <span class="at">obj_w =</span> <span class="dv">1</span>, <span class="at">w =</span> <span class="dv">0</span>)</span>
+<span id="cb6-14"><a href="#cb6-14" tabindex="-1"></a><span class="co">#&gt; [1] 1.000000 1.648721 2.718282</span></span></code></pre></div>
+</div>
+<div id="parameters-and-fast-re-evaluation" class="section level2">
+<h2>Parameters and fast re-evaluation</h2>
+<p>A <code>sd_parameter()</code> is fixed data that can be
+<strong>updated between evaluations</strong> without rebuilding the
+graph — the basis for CVXPY/CVXR’s Disciplined Parametrized Programming
+(DPP) fast path. Register the parameters once, then push new values with
+<code>sd_update_params()</code>:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a>p    <span class="ot">&lt;-</span> <span class="fu">sd_parameter</span>(<span class="at">d1 =</span> <span class="dv">1</span><span class="dt">L</span>, <span class="at">d2 =</span> <span class="dv">1</span><span class="dt">L</span>, <span class="at">param_id =</span> <span class="dv">0</span><span class="dt">L</span>, <span class="at">n_vars =</span> n, <span class="at">values =</span> <span class="dv">2</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>obj2 <span class="ot">&lt;-</span> <span class="fu">sd_sum</span>(<span class="fu">sd_scalar_mult</span>(p, <span class="fu">sd_exp</span>(x)), <span class="at">axis =</span> <span class="sc">-</span><span class="dv">1</span><span class="dt">L</span>)      <span class="co"># theta * sum(exp(x))</span></span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>prob2 <span class="ot">&lt;-</span> <span class="fu">sd_problem</span>(obj2, <span class="at">constraints =</span> <span class="fu">list</span>(), <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a><span class="fu">sd_register_params</span>(prob2, <span class="fu">list</span>(p))</span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a><span class="fu">sd_init_derivatives</span>(prob2)</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a><span class="fu">sd_objective_forward</span>(prob2, u)        <span class="co"># theta = 2</span></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="co">#&gt; [1] 10.73401</span></span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a><span class="fu">sd_update_params</span>(prob2, <span class="dv">3</span>)            <span class="co"># theta -&gt; 3</span></span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a><span class="fu">sd_objective_forward</span>(prob2, u)        <span class="co"># re-evaluated, no rebuild</span></span>
+<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a><span class="co">#&gt; [1] 16.10101</span></span></code></pre></div>
+</div>
+<div id="where-to-go-next" class="section level2">
+<h2>Where to go next</h2>
+<p>The full atom catalogue is grouped in the reference index: leaves,
+elementwise, affine/shape, bivariate, product-reduction, and
+parameter/constant-matrix atoms. For modelling at a higher level, see
+<strong>CVXR</strong>, which uses sparsediff as the derivative backend
+for its DNLP solver path.</p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

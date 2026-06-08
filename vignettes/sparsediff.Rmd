@@ -1,0 +1,130 @@
+---
+title: "Sparse derivatives with sparsediff"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Sparse derivatives with sparsediff}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## What sparsediff is
+
+**sparsediff** is a thin R interface to the
+[SparseDiffEngine](https://github.com/SparseDifferentiation/SparseDiffEngine)
+C library --- the sparse Jacobian and Hessian differentiation backend used by
+CVXPY for its Disciplined Nonlinear Programming (DNLP) extension. It is the R
+analog of the Python `sparsediffpy` package and wraps the same C library.
+
+You build a nonlinear **expression graph** out of the `sd_*` atom constructors,
+assemble the pieces into a **problem**, and then evaluate, at any primal point,
+
+* the objective value and its dense **gradient**,
+* the constraint vector and its sparse **Jacobian** (in COO form), and
+* the lower-triangular **Lagrangian Hessian** (in COO form).
+
+This is a low-level backend: the intended user is a higher-level modelling layer
+such as **CVXR**, not an analyst writing models by hand. The walk-through below
+shows the moving parts.
+
+```{r setup}
+library(sparsediff)
+engine_version()
+```
+
+## Building an expression graph
+
+Leaves are created with `sd_variable()` (a slice of the differentiation vector)
+and `sd_parameter()` (fixed data). Everything else is an atom applied to other
+expressions. Each constructor returns an **expression handle** --- an external
+pointer into the engine's graph that frees itself when garbage collected.
+
+Here is `f(x) = sum(exp(x))` for a length-3 variable, with a single linear
+constraint `g(x) = sum(x)`:
+
+```{r build}
+n   <- 3L
+x   <- sd_variable(d1 = n, d2 = 1L, var_id = 0L, n_vars = n)  # 0-based var offset
+obj <- sd_sum(sd_exp(x), axis = -1L)                          # sum(exp(x))  (axis -1 = all)
+g1  <- sd_sum(x, axis = -1L)                                  # sum(x)
+```
+
+`var_id` is the 0-based, column-major offset of the variable's first entry in
+the flat primal vector; `n_vars` is the total number of variables. Reduction
+`axis` follows the engine convention: `-1` (all entries), `0` (down rows),
+`1` (across columns).
+
+## Assembling a problem and its derivative oracle
+
+```{r problem}
+prob <- sd_problem(objective = obj, constraints = list(g1), verbose = FALSE)
+
+# initialise the (structural) derivative layout once
+sd_init_derivatives(prob)
+sd_init_jacobian_coo(prob)
+sd_init_hessian_coo(prob)
+```
+
+Sparsity patterns are structural and fixed after these `sd_init_*` calls, so you
+query them once and reuse them; only the *values* are recomputed at each point.
+
+## Evaluating value and derivatives
+
+Evaluation is ordered: a **forward pass** populates the node values at a primal
+point `u`, after which the gradient, Jacobian values and Hessian values can be
+read.
+
+```{r evaluate}
+u <- c(0, 0.5, 1)
+
+sd_objective_forward(prob, u)   # value of sum(exp(x))
+sd_gradient(prob)               # gradient = exp(u)
+
+sd_constraint_forward(prob, u)  # value of sum(x)
+```
+
+The constraint Jacobian comes back in COO form (0-based row/column indices) plus
+the matching nonzero values:
+
+```{r jacobian}
+sd_jacobian_sparsity(prob)      # rows / cols / nrow / ncol
+sd_jacobian_values(prob)        # d/dx sum(x) = (1, 1, 1)
+```
+
+The Lagrangian Hessian is the lower triangle of
+`obj_w * Hess(f) + sum_i w[i] * Hess(g_i)`. Here the objective weight is 1 and
+the constraint is linear (zero Hessian), so the result is `diag(exp(u))`:
+
+```{r hessian}
+sd_hessian_sparsity(prob)
+sd_hessian_values(prob, obj_w = 1, w = 0)
+```
+
+## Parameters and fast re-evaluation
+
+A `sd_parameter()` is fixed data that can be **updated between evaluations**
+without rebuilding the graph --- the basis for CVXPY/CVXR's Disciplined
+Parametrized Programming (DPP) fast path. Register the parameters once, then push
+new values with `sd_update_params()`:
+
+```{r parameters}
+p    <- sd_parameter(d1 = 1L, d2 = 1L, param_id = 0L, n_vars = n, values = 2)
+obj2 <- sd_sum(sd_scalar_mult(p, sd_exp(x)), axis = -1L)      # theta * sum(exp(x))
+prob2 <- sd_problem(obj2, constraints = list(), verbose = FALSE)
+sd_register_params(prob2, list(p))
+sd_init_derivatives(prob2)
+
+sd_objective_forward(prob2, u)        # theta = 2
+sd_update_params(prob2, 3)            # theta -> 3
+sd_objective_forward(prob2, u)        # re-evaluated, no rebuild
+```
+
+## Where to go next
+
+The full atom catalogue is grouped in the reference index: leaves, elementwise,
+affine/shape, bivariate, product-reduction, and parameter/constant-matrix atoms.
+For modelling at a higher level, see **CVXR**, which uses sparsediff as the
+derivative backend for its DNLP solver path.

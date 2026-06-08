@@ -1,0 +1,12 @@
+#!/bin/sh
+# Restore the source tree to a clean state (as if freshly cloned).
+# Called by R CMD build and by R CMD INSTALL --clean.
+
+# Generated Makevars
+rm -f src/Makevars src/Makevars.win
+
+# Compiled objects and shared library (including vendored engine sources)
+find src -name "*.o" -delete 2>/dev/null
+find src -name "*.so" -delete 2>/dev/null
+find src -name "*.dylib" -delete 2>/dev/null
+find src -name "*.dll" -delete 2>/dev/null

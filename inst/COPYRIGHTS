@@ -1,0 +1,17 @@
+sparsediff R package -- copyright and licensing of bundled code
+===============================================================
+
+The sparsediff R package itself -- the R code and the cpp11 binding sources
+under src/ (excluding src/sparsediffengine/) -- is released under the Apache
+License, Version 2.0 (see the DESCRIPTION License field).
+
+For convenience the package builds and statically links the following
+third-party library from bundled source.
+
+
+1. SparseDiffEngine (C sparse differentiation backend) -- src/sparsediffengine/
+   Copyright 2026 Daniel Cederberg and William Zhang.
+   Apache License, Version 2.0. Full text: src/sparsediffengine/LICENSE
+
+   This is the same C library wrapped by the 'sparsediffpy' Python package and
+   used by 'CVXPY' for its Disciplined Nonlinear Programming (DNLP) extension.

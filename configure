@@ -1,0 +1,21 @@
+#!/bin/sh
+# Generate src/Makevars from src/Makevars.in.
+#
+# Optionally launch the compiler through ccache when it is available, matching
+# the conditional ccache detection used by the SCIP R package.  This only
+# prepends ccache to the compiler R already selected -- R still dictates which
+# compiler and which standard/flags are used.  A complete no-op when ccache is
+# not on PATH.
+
+CCACHE_EXE=`which ccache 2>/dev/null`
+if test -n "${CCACHE_EXE}"; then
+    CCACHE_LINE="CC := ${CCACHE_EXE} \$(CC)"
+    echo "sparsediff: found ccache (${CCACHE_EXE}); launching the compiler through it"
+else
+    CCACHE_LINE=""
+    echo "sparsediff: ccache not found; compiling without it"
+fi
+
+sed -e "s|@CCACHE@|${CCACHE_LINE}|g" src/Makevars.in > src/Makevars
+
+exit 0
