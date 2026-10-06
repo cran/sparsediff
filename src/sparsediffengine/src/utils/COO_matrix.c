@@ -22,13 +22,13 @@
 
 COO_matrix *new_COO_matrix(const CSR_matrix *A)
 {
-    COO_matrix *coo = (COO_matrix *) SP_MALLOC(sizeof(COO_matrix));
+    COO_matrix *coo = (COO_matrix *) sp_malloc(sizeof(COO_matrix));
     coo->m = A->m;
     coo->n = A->n;
     coo->nnz = A->nnz;
-    coo->rows = (int *) SP_MALLOC(A->nnz * sizeof(int));
-    coo->cols = (int *) SP_MALLOC(A->nnz * sizeof(int));
-    coo->x = (double *) SP_MALLOC(A->nnz * sizeof(double));
+    coo->rows = (int *) sp_malloc(A->nnz * sizeof(int));
+    coo->cols = (int *) sp_malloc(A->nnz * sizeof(int));
+    coo->x = (double *) sp_malloc(A->nnz * sizeof(double));
     coo->value_map = NULL;
 
     for (int r = 0; r < A->m; r++)
@@ -60,14 +60,14 @@ COO_matrix *new_COO_matrix_lower_triangular(const CSR_matrix *A)
         }
     }
 
-    COO_matrix *coo = (COO_matrix *) SP_MALLOC(sizeof(COO_matrix));
+    COO_matrix *coo = (COO_matrix *) sp_malloc(sizeof(COO_matrix));
     coo->m = A->m;
     coo->n = A->n;
     coo->nnz = count;
-    coo->rows = (int *) SP_MALLOC(count * sizeof(int));
-    coo->cols = (int *) SP_MALLOC(count * sizeof(int));
-    coo->x = (double *) SP_MALLOC(count * sizeof(double));
-    coo->value_map = (int *) SP_MALLOC(count * sizeof(int));
+    coo->rows = (int *) sp_malloc(count * sizeof(int));
+    coo->cols = (int *) sp_malloc(count * sizeof(int));
+    coo->x = (double *) sp_malloc(count * sizeof(double));
+    coo->value_map = (int *) sp_malloc(count * sizeof(int));
 
     /* Pass 2: fill arrays */
     int idx = 0;
@@ -101,10 +101,10 @@ void free_COO_matrix(COO_matrix *matrix)
 {
     if (matrix)
     {
-        free(matrix->rows);
-        free(matrix->cols);
-        free(matrix->x);
-        free(matrix->value_map);
-        free(matrix);
+        sp_free(matrix->rows);
+        sp_free(matrix->cols);
+        sp_free(matrix->x);
+        sp_free(matrix->value_map);
+        sp_free(matrix);
     }
 }

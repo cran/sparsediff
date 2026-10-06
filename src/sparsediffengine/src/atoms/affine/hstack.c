@@ -20,6 +20,7 @@
 #include "utils/CSR_sum.h"
 #include "utils/sparse_matrix.h"
 #include "utils/tracked_alloc.h"
+#include "utils/utils.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -94,10 +95,11 @@ static void eval_jacobian(expr *node)
     {
         expr *child = hnode->args[i];
         child->eval_jacobian(child);
-        /* copy values */
-        memcpy(node->jacobian->x + node->jacobian->nnz, child->jacobian->x,
-               child->jacobian->nnz * sizeof(double));
-        node->jacobian->nnz += child->jacobian->nnz;
+        /* to_csr needed for stacked_pd */
+        CSR_matrix *child_csr = child->jacobian->to_csr(child->jacobian);
+        memcpy(node->jacobian->x + node->jacobian->nnz, child_csr->x,
+               child_csr->nnz * sizeof(double));
+        node->jacobian->nnz += child_csr->nnz;
     }
 }
 
@@ -113,9 +115,10 @@ static void wsum_hess_init_impl(expr *node)
     }
 
     /* worst-case scenario the nnz of node->wsum_hess is the sum of children's
-       nnz */
-    CSR_matrix *H = new_CSR_matrix(node->n_vars, node->n_vars, nnz);
-    hnode->CSR_work = new_CSR_matrix(node->n_vars, node->n_vars, nnz);
+       nnz, capped by the output cell count */
+    int nnz_ub = MIN(nnz, sat_mul_int(node->n_vars, node->n_vars));
+    CSR_matrix *H = new_CSR_matrix(node->n_vars, node->n_vars, nnz_ub);
+    hnode->CSR_work = new_CSR_matrix(node->n_vars, node->n_vars, nnz_ub);
 
     /* fill sparsity pattern */
     H->nnz = 0;
@@ -171,7 +174,7 @@ static void free_type_data(expr *node)
 
     free_CSR_matrix(hnode->CSR_work);
     hnode->CSR_work = NULL;
-    free(hnode->args);
+    sp_free(hnode->args);
     hnode->args = NULL;
 }
 
@@ -186,14 +189,14 @@ expr *new_hstack(expr **args, int n_args, int n_vars)
     }
 
     /* Allocate the type-specific struct */
-    hstack_expr *hnode = (hstack_expr *) SP_CALLOC(1, sizeof(hstack_expr));
+    hstack_expr *hnode = (hstack_expr *) sp_calloc(1, sizeof(hstack_expr));
     expr *node = &hnode->base;
     init_expr(node, args[0]->d1, d2, n_vars, forward, jacobian_init_impl,
               eval_jacobian, is_affine, wsum_hess_init_impl, wsum_hess_eval,
               free_type_data);
 
     /* Set type-specific fields (deep copy args array) */
-    hnode->args = (expr **) SP_CALLOC(n_args, sizeof(expr *));
+    hnode->args = (expr **) sp_calloc(n_args, sizeof(expr *));
     hnode->n_args = n_args;
     for (int i = 0; i < n_args; i++)
     {

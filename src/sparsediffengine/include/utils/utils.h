@@ -18,6 +18,8 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include "iVec.h"
+#include <limits.h>
 #include <stdbool.h>
 
 #ifndef MAX
@@ -27,14 +29,38 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
+/* Dense cell count a*b for allocation upper bounds, clamped to INT_MAX on overflow.
+   Used as MIN(loose_nnz_bound, sat_mul_int(rows, cols)): a real nnz bound is always
+   < INT_MAX, so on overflow the MIN correctly falls back to the loose bound instead
+   of selecting a wrapped (negative or small-positive) product. */
+static inline int sat_mul_int(int a, int b)
+{
+    if (a <= 0 || b <= 0) return 0;
+    if (a > INT_MAX / b) return INT_MAX;
+    return a * b;
+}
+
 /* Sort an array of integers in ascending order */
 void sort_int_array(int *array, int size);
 
 /* Return true if sorted index arrays a_idx and b_idx (lengths a_len, b_len)
    share any value, where b_idx entries are shifted by b_offset before
-   comparison (a_idx[ai] == b_idx[bi] - b_offset). Use b_offset = 0 for a
-   plain intersection check.  */
+   comparison (a_idx[ai] == b_idx[bi] - b_offset). */
 bool has_overlap(const int *a_idx, int a_len, const int *b_idx, int b_len,
                  int b_offset);
+
+/* Find positions where two sorted, ascending int arrays match. For each match
+   (a[ii] == b[jj]) writes ii into idx_a and jj into idx_b. Returns the count. */
+int sorted_intersect_indices(const int *a, int a_len, const int *b, int b_len,
+                             int *idx_a, int *idx_b);
+
+/* Merges 'n_arrs' sorted, ascending integer arrays into 'out', 'producing the
+   sorted deduplicated union. 'arrs[a]' has length 'lens[a]'. 'out' is cleared
+   (length reset, capacity reused) and populated. */
+void sorted_union_int_arrays(const int *const *arrs, const int *lens, int n_arrs,
+                             iVec *out);
+
+/* in-place cumulative sum */
+void cumsum(int *p, int n);
 
 #endif // UTILS_H

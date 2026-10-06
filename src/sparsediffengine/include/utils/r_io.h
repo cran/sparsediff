@@ -32,11 +32,13 @@
  *     (_exit) are never referenced -- so R CMD check's "checking compiled code"
  *     finds nothing to flag in the engine objects.
  *
- * The engine's I/O surface is small and was verified exhaustively: `printf`
- * (statistics in problem.c; no return-value use), `fprintf(stderr, ...)` (error
- * paths only -- the ONLY use of stderr, always as the first argument, no
- * vfprintf/fflush/fputs and no non-stderr fprintf), and `exit` (fatal paths).
- * There is no `abort`, no `stdout` token, and no `std::cout` (pure C).  So:
+ * The engine's I/O surface is small and was verified exhaustively (re-counted
+ * at v0.6.1): `printf` (17 sites of statistics in problem.c plus 3 in iVec.h's
+ * print_ivec; no return-value use), `fprintf(stderr, ...)` (31 sites in 15
+ * files, error paths only -- the ONLY use of stderr, always as the first
+ * argument, no vfprintf/fflush/fputs and no non-stderr fprintf), and `exit`
+ * (34 sites in the same 15 files, fatal paths).  There is no `abort`, no
+ * `stdout` token, and no `std::cout` (pure C).  So:
  *   printf  -> Rprintf
  *   stderr  -> a stream that forwards to REprintf (funopen/fopencookie; a
  *              sentinel + wrapped fprintf where neither exists, e.g. Windows)

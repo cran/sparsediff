@@ -16,6 +16,21 @@
 \alias{sd_hstack}
 \alias{sd_vstack}
 \title{Affine and shape atoms}
+\usage{
+sd_add(left, right)
+sd_sum(child, axis)
+sd_trace(c)
+sd_transpose(c)
+sd_diag_vec(c)
+sd_diag_mat(c)
+sd_upper_tri(c)
+sd_promote(c, d1, d2)
+sd_reshape(c, d1, d2)
+sd_broadcast(c, d1, d2)
+sd_index(child, d1, d2, indices)
+sd_hstack(args, n_vars)
+sd_vstack(args, n_vars)
+}
 \arguments{
 \item{left, right, child, c}{expression handles.}
 

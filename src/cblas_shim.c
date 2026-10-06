@@ -1,7 +1,7 @@
 /* cblas_shim.c
  *
- * Implements the 4 CBLAS routines SparseDiffEngine uses (cblas_dscal,
- * cblas_dcopy, cblas_dgemv, cblas_dgemm) by forwarding to R's Fortran BLAS via
+ * Implements the 5 CBLAS routines SparseDiffEngine uses (cblas_dscal,
+ * cblas_dcopy, cblas_ddot, cblas_dgemv, cblas_dgemm) by forwarding to R's Fortran BLAS via
  * F77_CALL(). This is the standard CBLAS-over-Fortran-BLAS wrapper (cf. Netlib
  * reference CBLAS), so the engine uses whatever BLAS R is configured with
  * (R's reference BLAS by default), rather than a separate CBLAS implementation.
@@ -18,7 +18,7 @@
 # define USE_FC_LEN_T
 #endif
 #include <Rconfig.h>       /* FC_LEN_T */
-#include <R_ext/BLAS.h>    /* F77_CALL(dgemm/dgemv/dscal/dcopy), F77_NAME */
+#include <R_ext/BLAS.h>    /* F77_CALL(dgemm/dgemv/dscal/dcopy/ddot), F77_NAME */
 #ifndef FCONE
 # define FCONE
 #endif
@@ -41,6 +41,11 @@ void cblas_dscal(const int N, const double alpha, double *X, const int incX) {
 void cblas_dcopy(const int N, const double *X, const int incX,
                  double *Y, const int incY) {
     F77_CALL(dcopy)(&N, X, &incX, Y, &incY);
+}
+
+double cblas_ddot(const int N, const double *X, const int incX,
+                  const double *Y, const int incY) {
+    return F77_CALL(ddot)(&N, X, &incX, Y, &incY);
 }
 
 void cblas_dgemv(const enum CBLAS_ORDER order, const enum CBLAS_TRANSPOSE TransA,

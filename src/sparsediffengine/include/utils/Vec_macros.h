@@ -45,6 +45,7 @@
 #include "utils/r_io.h"
 #endif
 
+#include "utils/tracked_alloc.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,12 +70,12 @@
     PSLP_UNUSED static TYPE_NAME##Vec *TYPE_NAME##Vec_new(int capacity)             \
     {                                                                               \
         assert(capacity > 0);                                                       \
-        TYPE_NAME##Vec *vec = (TYPE_NAME##Vec *) malloc(sizeof(TYPE_NAME##Vec));    \
+        TYPE_NAME##Vec *vec = (TYPE_NAME##Vec *) sp_malloc(sizeof(TYPE_NAME##Vec)); \
         if (vec == NULL) return NULL;                                               \
-        vec->data = (TYPE *) malloc(capacity * sizeof(TYPE));                       \
+        vec->data = (TYPE *) sp_malloc(capacity * sizeof(TYPE));                    \
         if (vec->data == NULL)                                                      \
         {                                                                           \
-            free(vec);                                                              \
+            sp_free(vec);                                                           \
             return NULL;                                                            \
         }                                                                           \
                                                                                     \
@@ -85,8 +86,8 @@
                                                                                     \
     static inline void TYPE_NAME##Vec_free(TYPE_NAME##Vec *vec)                     \
     {                                                                               \
-        free(vec->data);                                                            \
-        free(vec);                                                                  \
+        sp_free(vec->data);                                                         \
+        sp_free(vec);                                                               \
     }                                                                               \
                                                                                     \
     static inline void TYPE_NAME##Vec_clear_no_resize(TYPE_NAME##Vec *vec)          \
@@ -100,8 +101,8 @@
         {                                                                           \
             vec->capacity *= 2;                                                     \
             assert(vec->capacity > 0);                                              \
-            TYPE *temp =                                                            \
-                (TYPE *) realloc(vec->data, (size_t) vec->capacity * sizeof(TYPE)); \
+            TYPE *temp = (TYPE *) sp_realloc(vec->data, (size_t) vec->capacity *    \
+                                                            sizeof(TYPE));          \
             if (temp == NULL)                                                       \
             {                                                                       \
                 TYPE_NAME##Vec_free(vec);                                           \
@@ -126,8 +127,8 @@
                 new_capacity *= 2;                                                  \
             }                                                                       \
                                                                                     \
-            TYPE *temp =                                                            \
-                (TYPE *) realloc(vec->data, (size_t) new_capacity * sizeof(TYPE));  \
+            TYPE *temp = (TYPE *) sp_realloc(vec->data,                             \
+                                             (size_t) new_capacity * sizeof(TYPE)); \
             if (temp == NULL)                                                       \
             {                                                                       \
                 TYPE_NAME##Vec_free(vec);                                           \

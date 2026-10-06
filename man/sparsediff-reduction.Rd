@@ -6,6 +6,11 @@
 \alias{sd_prod_axis_zero}
 \alias{sd_prod_axis_one}
 \title{Product-reduction atoms}
+\usage{
+sd_prod(c)
+sd_prod_axis_zero(c)
+sd_prod_axis_one(c)
+}
 \arguments{
 \item{c}{an expression handle.}
 }

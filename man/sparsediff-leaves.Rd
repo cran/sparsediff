@@ -5,6 +5,10 @@
 \alias{sd_variable}
 \alias{sd_parameter}
 \title{Leaf expressions: variables and parameters}
+\usage{
+sd_variable(d1, d2, var_id, n_vars)
+sd_parameter(d1, d2, param_id, n_vars, values)
+}
 \arguments{
 \item{d1, d2}{row and column dimensions of the leaf.}
 

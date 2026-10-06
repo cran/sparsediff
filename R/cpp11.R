@@ -4,6 +4,14 @@ sd_engine_version <- function() {
   .Call(`_sparsediff_sd_engine_version`)
 }
 
+sd_get_expr_dimensions <- function(node) {
+  .Call(`_sparsediff_sd_get_expr_dimensions`, node)
+}
+
+sd_get_expr_size <- function(node) {
+  .Call(`_sparsediff_sd_get_expr_size`, node)
+}
+
 sd_selftest_dgemm <- function() {
   .Call(`_sparsediff_sd_selftest_dgemm`)
 }
@@ -180,6 +188,18 @@ sd_quad_form <- function(child, Qp, Qi, Qx) {
   .Call(`_sparsediff_sd_quad_form`, child, Qp, Qi, Qx)
 }
 
+sd_quad_form_dense <- function(param, child, data) {
+  .Call(`_sparsediff_sd_quad_form_dense`, param, child, data)
+}
+
+sd_left_kron <- function(param, child, p, q, r, s, active_blocks) {
+  .Call(`_sparsediff_sd_left_kron`, param, child, p, q, r, s, active_blocks)
+}
+
+sd_right_kron <- function(param, child, p, q, r, s, active_blocks) {
+  .Call(`_sparsediff_sd_right_kron`, param, child, p, q, r, s, active_blocks)
+}
+
 sd_left_matmul <- function(child, Ap, Ai, Ax, ncol) {
   .Call(`_sparsediff_sd_left_matmul`, child, Ap, Ai, Ax, ncol)
 }
@@ -250,4 +270,24 @@ sd_hessian_sparsity <- function(prob) {
 
 sd_hessian_values <- function(prob, obj_w, w) {
   .Call(`_sparsediff_sd_hessian_values`, prob, obj_w, w)
+}
+
+sd_jacobian <- function(prob) {
+  .Call(`_sparsediff_sd_jacobian`, prob)
+}
+
+sd_get_jacobian <- function(prob) {
+  .Call(`_sparsediff_sd_get_jacobian`, prob)
+}
+
+sd_init_hessian <- function(prob) {
+  invisible(.Call(`_sparsediff_sd_init_hessian`, prob))
+}
+
+sd_hessian <- function(prob, obj_w, w) {
+  .Call(`_sparsediff_sd_hessian`, prob, obj_w, w)
+}
+
+sd_get_hessian <- function(prob) {
+  .Call(`_sparsediff_sd_get_hessian`, prob)
 }

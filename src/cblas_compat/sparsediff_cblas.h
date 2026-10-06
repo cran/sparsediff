@@ -7,7 +7,7 @@
  * the *Fortran* BLAS (R's bundled reference BLAS ships no CBLAS symbols). This
  * header declares the small CBLAS subset the engine actually uses; the matching
  * implementations in cblas_shim.c forward to R's Fortran BLAS via F77_CALL().
- * This is the standard "CBLAS over Fortran BLAS" wrapper, restricted to the 4
+ * This is the standard "CBLAS over Fortran BLAS" wrapper, restricted to the 5
  * routines SparseDiffEngine calls, so the engine uses the same BLAS as R.
  *
  * Enum values and signatures match the Netlib reference cblas.h so the engine's
@@ -29,6 +29,9 @@ void cblas_dscal(const int N, const double alpha, double *X, const int incX);
 
 void cblas_dcopy(const int N, const double *X, const int incX,
                  double *Y, const int incY);
+
+double cblas_ddot(const int N, const double *X, const int incX,
+                  const double *Y, const int incY);
 
 void cblas_dgemv(const enum CBLAS_ORDER order, const enum CBLAS_TRANSPOSE TransA,
                  const int M, const int N, const double alpha,

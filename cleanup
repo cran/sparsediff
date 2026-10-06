@@ -5,7 +5,15 @@
 # Generated Makevars
 rm -f src/Makevars src/Makevars.win
 
-# Compiled objects and shared library (including vendored engine sources)
+# Compiled objects and shared library (including vendored engine sources).
+# This alone is not enough to keep them out of the source tarball: the engine
+# builds in place (objects land next to the .c), and building the vignette
+# (library(sparsediff)) compiles the package during R CMD build, after this
+# script has run, so on some platforms (observed: Windows) fresh .o end up in the
+# build tree.  The ^src/.*\.o$ and ^src/.*\.(so|a|dll|dylib)$ lines in
+# .Rbuildignore are applied when the tarball is assembled, after the vignette
+# build, so they exclude them everywhere and avoid the "apparent object
+# files/libraries" NOTE.  (.Rbuildignore lines are regexes; it has no comments.)
 find src -name "*.o" -delete 2>/dev/null
 find src -name "*.so" -delete 2>/dev/null
 find src -name "*.dylib" -delete 2>/dev/null

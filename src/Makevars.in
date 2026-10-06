@@ -1,4 +1,4 @@
-# sparsediff: build the vendored SparseDiffEngine (v0.3.0) C sources plus the
+# sparsediff: build the vendored SparseDiffEngine (v0.6.1) C sources plus the
 # R-binding glue in this directory.  GENERATED from Makevars.in by ./configure.
 #
 # CRAN discipline: R dictates the C standard and the optimization/warning
@@ -25,7 +25,12 @@ ENGINE = sparsediffengine
 # for R CMD check "checking compiled code").  R's own include path (for
 # R_ext/Print.h / R_ext/Error.h) is supplied automatically when R compiles the
 # package, so no extra -I is required here.
-PKG_CPPFLAGS = -I$(ENGINE)/include -Icblas_compat -DSPARSEDIFF_USE_RBLAS -DSPARSEDIFF_R_PRINT -DDIFF_ENGINE_VERSION='"0.3.0"'
+# -D_GNU_SOURCE must be set on the command line, before any system header: r_io.h
+# defines it for fopencookie(), but by then tracked_alloc.h has already pulled in
+# <stdlib.h>, and glibc <= 2.36 fixes its feature macros at the first header, so
+# fopencookie/cookie_io_functions_t are then undeclared and the build fails.
+# Harmless on macOS and Windows.
+PKG_CPPFLAGS = -I$(ENGINE)/include -Icblas_compat -D_GNU_SOURCE -DSPARSEDIFF_USE_RBLAS -DSPARSEDIFF_R_PRINT -DDIFF_ENGINE_VERSION='"0.6.1"'
 PKG_LIBS = $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -lm
 
 # Engine library sources (depths 1-3 under $(ENGINE)/src cover src/, src/utils,

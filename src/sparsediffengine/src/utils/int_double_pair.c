@@ -31,7 +31,7 @@ static int compare_int_double_pair(const void *a, const void *b)
 
 int_double_pair *new_int_double_pair_array(int size)
 {
-    return (int_double_pair *) SP_MALLOC(size * sizeof(int_double_pair));
+    return (int_double_pair *) sp_malloc(size * sizeof(int_double_pair));
 }
 
 void set_int_double_pair_array(int_double_pair *pair, int *ints, double *doubles,
@@ -46,7 +46,7 @@ void set_int_double_pair_array(int_double_pair *pair, int *ints, double *doubles
 
 void free_int_double_pair_array(int_double_pair *array)
 {
-    free(array);
+    sp_free(array);
 }
 
 void sort_int_double_pair_array(int_double_pair *array, int size)

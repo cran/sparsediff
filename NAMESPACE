@@ -24,6 +24,17 @@ export(sd_init_hessian_coo)
 export(sd_hessian_sparsity)
 export(sd_hessian_values)
 
+# sparse derivatives (CSR)
+export(sd_jacobian)
+export(sd_get_jacobian)
+export(sd_init_hessian)
+export(sd_hessian)
+export(sd_get_hessian)
+
+# node shape
+export(sd_get_expr_dimensions)
+export(sd_get_expr_size)
+
 # leaves
 export(sd_variable)
 
@@ -80,7 +91,10 @@ export(sd_scalar_mult)
 export(sd_vector_mult)
 export(sd_convolve)
 export(sd_quad_form)
+export(sd_quad_form_dense)
 export(sd_left_matmul)
 export(sd_right_matmul)
 export(sd_left_matmul_dense)
 export(sd_right_matmul_dense)
+export(sd_left_kron)
+export(sd_right_kron)

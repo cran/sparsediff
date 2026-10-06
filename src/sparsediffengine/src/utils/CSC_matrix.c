@@ -24,19 +24,19 @@
 
 CSC_matrix *new_CSC_matrix(int m, int n, int nnz)
 {
-    CSC_matrix *matrix = (CSC_matrix *) SP_MALLOC(sizeof(CSC_matrix));
+    CSC_matrix *matrix = (CSC_matrix *) sp_malloc(sizeof(CSC_matrix));
     if (!matrix) return NULL;
 
-    matrix->p = (int *) SP_MALLOC((n + 1) * sizeof(int));
-    matrix->i = (int *) SP_MALLOC(nnz * sizeof(int));
-    matrix->x = (double *) SP_MALLOC(nnz * sizeof(double));
+    matrix->p = (int *) sp_malloc((n + 1) * sizeof(int));
+    matrix->i = (int *) sp_malloc(nnz * sizeof(int));
+    matrix->x = (double *) sp_malloc(nnz * sizeof(double));
 
     if (!matrix->p || !matrix->i || !matrix->x)
     {
-        free(matrix->p);
-        free(matrix->i);
-        free(matrix->x);
-        free(matrix);
+        sp_free(matrix->p);
+        sp_free(matrix->i);
+        sp_free(matrix->x);
+        sp_free(matrix);
         return NULL;
     }
 
@@ -51,10 +51,10 @@ void free_CSC_matrix(CSC_matrix *matrix)
 {
     if (matrix)
     {
-        free(matrix->p);
-        free(matrix->i);
-        free(matrix->x);
-        free(matrix);
+        sp_free(matrix->p);
+        sp_free(matrix->i);
+        sp_free(matrix->x);
+        sp_free(matrix);
     }
 }
 
@@ -67,7 +67,7 @@ CSR_matrix *ATA_alloc(const CSC_matrix *A)
     int i, j, ii, jj;
 
     /* row ptr and column idxs for upper triangular part of C = A^T A */
-    int *Cp = (int *) SP_MALLOC((n + 1) * sizeof(int));
+    int *Cp = (int *) sp_malloc((n + 1) * sizeof(int));
     iVec *Ci = iVec_new(m);
     Cp[0] = 0;
 
@@ -106,7 +106,7 @@ CSR_matrix *ATA_alloc(const CSC_matrix *A)
     symmetrize_csr(Cp, Ci->data, n, C);
 
     /* free workspace */
-    free(Cp);
+    sp_free(Cp);
     iVec_free(Ci);
 
     return C;
@@ -341,7 +341,7 @@ CSR_matrix *BTA_alloc(const CSC_matrix *A, const CSC_matrix *B)
     int i, j, ii, jj;
 
     /* row ptr and column idxs for C = B^T A */
-    int *Cp = (int *) SP_MALLOC((p + 1) * sizeof(int));
+    int *Cp = (int *) sp_malloc((p + 1) * sizeof(int));
     iVec *Ci = iVec_new(n);
     Cp[0] = 0;
 
@@ -383,7 +383,7 @@ CSR_matrix *BTA_alloc(const CSC_matrix *A, const CSC_matrix *B)
     memcpy(C->i, Ci->data, nnz * sizeof(int));
 
     /* free workspace */
-    free(Cp);
+    sp_free(Cp);
     iVec_free(Ci);
 
     return C;
@@ -487,13 +487,13 @@ CSC_matrix *symBA_alloc(const CSR_matrix *B, const CSC_matrix *A)
     int i, j, k, jj, ii, ell;
 
     /* marker[row] = last column j that registered row as nonzero */
-    int *marker = (int *) SP_MALLOC(m * sizeof(int));
+    int *marker = (int *) sp_malloc(m * sizeof(int));
     for (i = 0; i < m; i++)
     {
         marker[i] = -1;
     }
 
-    int *Cp = (int *) SP_MALLOC((n + 1) * sizeof(int));
+    int *Cp = (int *) sp_malloc((n + 1) * sizeof(int));
     iVec *Ci = iVec_new(A->nnz);
     Cp[0] = 0;
 
@@ -529,8 +529,8 @@ CSC_matrix *symBA_alloc(const CSR_matrix *B, const CSC_matrix *A)
     memcpy(C->p, Cp, (n + 1) * sizeof(int));
     memcpy(C->i, Ci->data, total_nnz * sizeof(int));
 
-    free(marker);
-    free(Cp);
+    sp_free(marker);
+    sp_free(Cp);
     iVec_free(Ci);
 
     return C;

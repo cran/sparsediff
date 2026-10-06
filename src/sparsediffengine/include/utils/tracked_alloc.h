@@ -21,27 +21,87 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+/* Platform shim for "how many usable bytes are at this malloc'd pointer".
+    Used to track total live bytes */
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#define TRACKED_BLOCK_SIZE(p) malloc_size(p)
+#elif defined(_WIN32) || defined(_WIN64)
+#include <malloc.h>
+#define TRACKED_BLOCK_SIZE(p) _msize(p)
+#else
+#include <malloc.h>
+#define TRACKED_BLOCK_SIZE(p) malloc_usable_size(p)
+#endif
+
 /* R-package build: route console I/O (printf/stderr/exit) to R.  Guarded by
  * SPARSEDIFF_R_PRINT; off => byte-identical to upstream.  Hooked here because
- * tracked_alloc.h is included by every source that does any console output. */
+ * tracked_alloc.h is included by every source that does any console output.
+ * Placed after every system header above so r_io.h's function-like macros
+ * (exit, printf, fprintf) cannot rewrite a later system declaration. */
 #ifdef SPARSEDIFF_R_PRINT
 #include "utils/r_io.h"
 #endif
 
-extern size_t g_allocated_bytes;
+extern size_t g_allocated_bytes; /* current live bytes */
+extern size_t g_peak_bytes;      /* high-water mark since last reset */
 
-static inline void *SP_MALLOC(size_t size)
+/* All allocations in src/ must go through these wrappers (and pair sp_free
+   with sp_malloc / sp_calloc). Tests may use plain malloc/free — those
+   bytes are simply not tracked. */
+static inline void *sp_malloc(size_t size)
 {
     void *ptr = malloc(size);
-    if (ptr) g_allocated_bytes += size;
+    if (ptr)
+    {
+        g_allocated_bytes += TRACKED_BLOCK_SIZE(ptr);
+        if (g_allocated_bytes > g_peak_bytes)
+        {
+            g_peak_bytes = g_allocated_bytes;
+        }
+    }
     return ptr;
 }
 
-static inline void *SP_CALLOC(size_t count, size_t size)
+static inline void *sp_calloc(size_t count, size_t size)
 {
     void *ptr = calloc(count, size);
-    if (ptr) g_allocated_bytes += count * size;
+    if (ptr)
+    {
+        g_allocated_bytes += TRACKED_BLOCK_SIZE(ptr);
+        if (g_allocated_bytes > g_peak_bytes)
+        {
+            g_peak_bytes = g_allocated_bytes;
+        }
+    }
     return ptr;
+}
+
+static inline void sp_free(void *ptr)
+{
+    if (ptr)
+    {
+        g_allocated_bytes -= TRACKED_BLOCK_SIZE(ptr);
+        free(ptr);
+    }
+}
+
+static inline void *sp_realloc(void *ptr, size_t size)
+{
+    size_t old_block_size = ptr ? TRACKED_BLOCK_SIZE(ptr) : 0;
+    void *new_ptr = realloc(ptr, size);
+    if (new_ptr)
+    {
+        g_allocated_bytes =
+            g_allocated_bytes - old_block_size + TRACKED_BLOCK_SIZE(new_ptr);
+        if (g_allocated_bytes > g_peak_bytes)
+        {
+            g_peak_bytes = g_allocated_bytes;
+        }
+    }
+    /* realloc returning NULL means failure — original block is still live
+       per C standard, so no counter adjustment. */
+    return new_ptr;
 }
 
 #endif /* TRACKED_ALLOC_H */

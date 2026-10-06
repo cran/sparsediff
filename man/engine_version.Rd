@@ -7,7 +7,7 @@
 engine_version()
 }
 \value{
-A character scalar, e.g. \code{"0.3.0"}.
+A character scalar, e.g. \code{"0.6.1"}.
 }
 \description{
 Returns the version string of the SparseDiffEngine C library bundled with

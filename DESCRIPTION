@@ -2,7 +2,7 @@ Package: sparsediff
 Type: Package
 Title: R Interface to the 'SparseDiffEngine' Sparse Differentiation
         Backend
-Version: 0.4.0
+Version: 0.6.1
 Authors@R: c(
     person("Balasubramanian", "Narasimhan", role = c("aut", "cre"),
            email = "naras@stanford.edu"),
@@ -25,11 +25,12 @@ BugReports: https://github.com/bnaras/sparsediff/issues
 Encoding: UTF-8
 SystemRequirements: GNU make
 LinkingTo: cpp11
-Suggests: cpp11, knitr, rmarkdown
+Suggests: cpp11, knitr, rmarkdown, testthat (>= 3.0.0)
 VignetteBuilder: knitr
+Config/testthat/edition: 3
 NeedsCompilation: yes
-RoxygenNote: 7.3.3
-Packaged: 2026-06-03 04:46:07 UTC; naras
+Config/roxygen2/version: 8.1.0
+Packaged: 2026-10-06 03:45:43 UTC; naras
 Author: Balasubramanian Narasimhan [aut, cre],
   Daniel Cederberg [aut, cph] (Author of the bundled SparseDiffEngine C
     library),
@@ -37,4 +38,4 @@ Author: Balasubramanian Narasimhan [aut, cre],
     C library)
 Maintainer: Balasubramanian Narasimhan <naras@stanford.edu>
 Repository: CRAN
-Date/Publication: 2026-06-08 19:30:08 UTC
+Date/Publication: 2026-10-06 04:10:02 UTC

@@ -18,6 +18,23 @@
 \alias{sd_power}
 \alias{sd_neg}
 \title{Elementwise atoms}
+\usage{
+sd_exp(child)
+sd_log(c)
+sd_sin(c)
+sd_cos(c)
+sd_tan(c)
+sd_sinh(c)
+sd_tanh(c)
+sd_asinh(c)
+sd_atanh(c)
+sd_logistic(c)
+sd_xexp(c)
+sd_normal_cdf(c)
+sd_entr(c)
+sd_power(c, p)
+sd_neg(child)
+}
 \arguments{
 \item{child, c}{an expression handle (the argument).}
 

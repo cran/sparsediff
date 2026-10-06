@@ -18,6 +18,7 @@
 #include "problem.h"
 #include "subexpr.h"
 #include "utils/CSR_sum.h"
+#include "utils/stacked_pd.h"
 #include "utils/tracked_alloc.h"
 #include "utils/utils.h"
 #include <assert.h>
@@ -31,8 +32,11 @@ static void problem_lagrange_hess_fill_sparsity(problem *prob, int *iwork);
 problem *new_problem(expr *objective, expr **constraints, int n_constraints,
                      bool verbose)
 {
-    g_allocated_bytes = 0;
-    problem *prob = (problem *) SP_CALLOC(1, sizeof(problem));
+    /* we don't reset g_peak_bytes or g_allocated_bytes since allocations
+       using sp_malloc/sp_calloc might have happened before new_problem in eg.,
+       left_matmul, and their frees will subtract from this counter. */
+    g_peak_bytes = g_allocated_bytes;
+    problem *prob = (problem *) sp_calloc(1, sizeof(problem));
     if (!prob) return NULL;
 
     /* objective */
@@ -46,7 +50,7 @@ problem *new_problem(expr *objective, expr **constraints, int n_constraints,
     prob->n_constraints = n_constraints;
     if (n_constraints > 0)
     {
-        prob->constraints = (expr **) SP_MALLOC(n_constraints * sizeof(expr *));
+        prob->constraints = (expr **) sp_malloc(n_constraints * sizeof(expr *));
         for (int i = 0; i < n_constraints; i++)
         {
             prob->constraints[i] = constraints[i];
@@ -57,12 +61,13 @@ problem *new_problem(expr *objective, expr **constraints, int n_constraints,
 
     /* allocation */
     prob->constraint_values =
-        (double *) SP_CALLOC(prob->total_constraint_size, sizeof(double));
-    prob->gradient_values = (double *) SP_CALLOC(prob->n_vars, sizeof(double));
+        (double *) sp_calloc(prob->total_constraint_size, sizeof(double));
+    prob->gradient_values = (double *) sp_calloc(prob->n_vars, sizeof(double));
 
     /* Initialize statistics */
     prob->stats.time_init_derivatives = 0.0;
     prob->stats.time_eval_jacobian = 0.0;
+    prob->stats.time_eval_gradient = 0.0;
     prob->stats.time_eval_hessian = 0.0;
     prob->stats.time_forward_obj = 0.0;
     prob->stats.time_forward_constraints = 0.0;
@@ -131,6 +136,7 @@ static void problem_lagrange_hess_fill_sparsity(problem *prob, int *iwork)
     int idx_offset = 0;
 
     /* map objective hessian entries */
+    int obj_start = idx_offset;
     for (int row = 0; row < H->m; row++)
     {
         for (int idx = H->p[row]; idx < H->p[row + 1]; idx++)
@@ -143,11 +149,17 @@ static void problem_lagrange_hess_fill_sparsity(problem *prob, int *iwork)
             prob->hess_idx_map[idx_offset++] = col_to_pos[H_obj->i[j]];
         }
     }
+    if (prob->objective->wsum_hess->is_stacked_pd)
+    {
+        compose_csr_idx_map_for_spd((const stacked_pd *) prob->objective->wsum_hess,
+                                    H_obj, prob->hess_idx_map + obj_start);
+    }
 
     /* map constraint hessian entries */
     for (int c_idx = 0; c_idx < prob->n_constraints; c_idx++)
     {
         H_c = constrs[c_idx]->wsum_hess->to_csr(constrs[c_idx]->wsum_hess);
+        int c_start = idx_offset;
         for (int row = 0; row < H->m; row++)
         {
             for (int idx = H->p[row]; idx < H->p[row + 1]; idx++)
@@ -160,11 +172,19 @@ static void problem_lagrange_hess_fill_sparsity(problem *prob, int *iwork)
                 prob->hess_idx_map[idx_offset++] = col_to_pos[H_c->i[j]];
             }
         }
+        if (constrs[c_idx]->wsum_hess->is_stacked_pd)
+        {
+            compose_csr_idx_map_for_spd(
+                (const stacked_pd *) constrs[c_idx]->wsum_hess, H_c,
+                prob->hess_idx_map + c_start);
+        }
     }
 }
 
 void problem_init_jacobian(problem *prob)
 {
+    if (prob->jacobian != NULL) return;
+
     Timer timer;
     clock_gettime(CLOCK_MONOTONIC, &timer.start);
 
@@ -219,6 +239,8 @@ void problem_init_jacobian(problem *prob)
 
 void problem_init_hessian(problem *prob)
 {
+    if (prob->lagrange_hessian != NULL) return;
+
     Timer timer;
     clock_gettime(CLOCK_MONOTONIC, &timer.start);
 
@@ -234,13 +256,17 @@ void problem_init_hessian(problem *prob)
         nnz += prob->constraints[i]->wsum_hess->nnz;
     }
 
-    prob->lagrange_hessian = new_CSR_matrix(prob->n_vars, prob->n_vars, nnz);
-    memset(prob->lagrange_hessian->x, 0, nnz * sizeof(double)); /* affine shortcut */
-    prob->stats.nnz_hessian = nnz;
-    prob->hess_idx_map = (int *) SP_MALLOC(nnz * sizeof(int));
-    int *iwork = (int *) SP_MALLOC(MAX(nnz, prob->n_vars) * sizeof(int));
+    int hess_nnz_ub = MIN(nnz, sat_mul_int(prob->n_vars, prob->n_vars));
+    prob->lagrange_hessian = new_CSR_matrix(prob->n_vars, prob->n_vars, hess_nnz_ub);
+
+    /* affine shortcut */
+    memset(prob->lagrange_hessian->x, 0, hess_nnz_ub * sizeof(double));
+
+    prob->hess_idx_map = (int *) sp_malloc(nnz * sizeof(int));
+    int *iwork = (int *) sp_malloc(MAX(nnz, prob->n_vars) * sizeof(int));
     problem_lagrange_hess_fill_sparsity(prob, iwork);
-    free(iwork);
+    prob->stats.nnz_hessian = prob->lagrange_hessian->nnz;
+    sp_free(iwork);
 
     clock_gettime(CLOCK_MONOTONIC, &timer.end);
     prob->stats.time_init_derivatives += GET_ELAPSED_SECONDS(timer);
@@ -249,6 +275,8 @@ void problem_init_hessian(problem *prob)
 void problem_init_jacobian_coo(problem *prob)
 {
     problem_init_jacobian(prob);
+    if (prob->jacobian_coo != NULL) return;
+
     Timer timer;
     clock_gettime(CLOCK_MONOTONIC, &timer.start);
     prob->jacobian_coo = new_COO_matrix(prob->jacobian);
@@ -259,6 +287,8 @@ void problem_init_jacobian_coo(problem *prob)
 void problem_init_hessian_coo_lower_triangular(problem *prob)
 {
     problem_init_hessian(prob);
+    if (prob->lagrange_hessian_coo != NULL) return;
+
     Timer timer;
     clock_gettime(CLOCK_MONOTONIC, &timer.start);
     prob->lagrange_hessian_coo =
@@ -307,13 +337,15 @@ static inline void print_end_message(const Diff_engine_stats *stats)
     printf("  Lagrange Hessian (nnz):                 %d\n", stats->nnz_hessian);
     char mem_buf[64];
     format_memory(stats->memory_bytes, mem_buf, sizeof(mem_buf));
-    printf("  Allocated memory:                       %s\n", mem_buf);
+    printf("  Peak memory:                            %s\n", mem_buf);
 
     printf("\nTiming (seconds):\n");
     printf("  Derivative structure (sparsity):     %8.3f\n",
            stats->time_init_derivatives);
     printf("  Jacobian evaluation:                 %8.3f\n",
            stats->time_eval_jacobian);
+    printf("  Gradient evaluation:                 %8.3f\n",
+           stats->time_eval_gradient);
     printf("  Hessian evaluation:                  %8.3f\n",
            stats->time_eval_hessian);
     printf("  Objective evaluation:                %8.3f\n",
@@ -322,8 +354,8 @@ static inline void print_end_message(const Diff_engine_stats *stats)
            stats->time_forward_constraints);
 
     double total_time = stats->time_init_derivatives + stats->time_eval_jacobian +
-                        stats->time_eval_hessian + stats->time_forward_obj +
-                        stats->time_forward_constraints;
+                        stats->time_eval_gradient + stats->time_eval_hessian +
+                        stats->time_forward_obj + stats->time_forward_constraints;
 
     printf("  ----------------------------------------------\n");
     printf("  Total differentiation time:          %8.3f\n", total_time);
@@ -333,23 +365,23 @@ void free_problem(problem *prob)
 {
     if (prob == NULL) return;
 
+    prob->stats.memory_bytes = g_peak_bytes;
     if (prob->verbose)
     {
-        prob->stats.memory_bytes = g_allocated_bytes;
         print_end_message(&prob->stats);
     }
 
     /* Free param_nodes array (weak refs, don't free the nodes) */
-    free(prob->param_nodes);
+    sp_free(prob->param_nodes);
 
     /* Free allocated arrays */
-    free(prob->constraint_values);
-    free(prob->gradient_values);
+    sp_free(prob->constraint_values);
+    sp_free(prob->gradient_values);
     free_CSR_matrix(prob->jacobian);
     free_CSR_matrix(prob->lagrange_hessian);
     free_COO_matrix(prob->jacobian_coo);
     free_COO_matrix(prob->lagrange_hessian_coo);
-    free(prob->hess_idx_map);
+    sp_free(prob->hess_idx_map);
 
     /* Release expression references (decrements refcount) */
     free_expr(prob->objective);
@@ -357,16 +389,16 @@ void free_problem(problem *prob)
     {
         free_expr(prob->constraints[i]);
     }
-    free(prob->constraints);
+    sp_free(prob->constraints);
 
     /* Free problem struct */
-    free(prob);
+    sp_free(prob);
 }
 
 void problem_register_params(problem *prob, expr **param_nodes, int n_param_nodes)
 {
     prob->n_param_nodes = n_param_nodes;
-    prob->param_nodes = (expr **) SP_MALLOC(n_param_nodes * sizeof(expr *));
+    prob->param_nodes = (expr **) sp_malloc(n_param_nodes * sizeof(expr *));
     memcpy(prob->param_nodes, param_nodes, n_param_nodes * sizeof(expr *));
 
     prob->total_parameter_size = 0;
@@ -380,9 +412,6 @@ void problem_register_params(problem *prob, expr **param_nodes, int n_param_node
             exit(1);
         }
 
-        // TODO do we need to skip fixed params? maybe we adopt the convention
-        // that we don't ever register fixed params?
-        if (((parameter_expr *) param_nodes[i])->param_id == PARAM_FIXED) continue;
         prob->total_parameter_size += param_nodes[i]->size;
     }
 }
@@ -409,7 +438,6 @@ void problem_update_params(problem *prob, const double *theta)
             exit(1);
         }
 
-        if (param->param_id == PARAM_FIXED) continue;
         int offset = param->param_id;
         memcpy(pnode->value, theta + offset, pnode->size * sizeof(double));
     }

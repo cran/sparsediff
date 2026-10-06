@@ -20,10 +20,12 @@
 #include "utils/CSC_matrix.h"
 #include "utils/CSR_matrix.h"
 #include "utils/CSR_sum.h"
+#include "utils/cblas_wrapper.h"
 #include "utils/linalg_dense_sparse_matmuls.h"
 #include "utils/linalg_sparse_matmuls.h"
 #include "utils/mini_numpy.h"
 #include "utils/sparse_matrix.h"
+#include "utils/stacked_pd.h"
 #include "utils/tracked_alloc.h"
 #include "utils/utils.h"
 #include <assert.h>
@@ -96,7 +98,9 @@ static void forward(expr *node, const double *u)
     y->forward(y, u);
 
     /* local forward pass */
-    mat_mat_mult(x->value, y->value, node->value, x->d1, x->d2, y->d2);
+    int m = x->d1, k = x->d2, n = y->d2;
+    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, m, n, k, 1.0, x->value, m,
+                y->value, k, 0.0, node->value, m);
 }
 
 static void free_matmul_data(expr *node)
@@ -109,13 +113,13 @@ static void free_matmul_data(expr *node)
     free_CSR_matrix(mnode->B);
     free_CSR_matrix(mnode->BJg);
     free_CSC_matrix(mnode->BJg_CSC);
-    free(mnode->BJg_csc_work);
+    sp_free(mnode->BJg_csc_work);
     free_CSR_matrix(mnode->C);
     free_CSR_matrix(mnode->CT);
-    free(mnode->idx_map_C);
-    free(mnode->idx_map_CT);
-    free(mnode->idx_map_Hf);
-    free(mnode->idx_map_Hg);
+    sp_free(mnode->idx_map_C);
+    sp_free(mnode->idx_map_CT);
+    sp_free(mnode->idx_map_Hf);
+    sp_free(mnode->idx_map_Hg);
 }
 
 static bool is_affine(const expr *node)
@@ -237,6 +241,7 @@ static void jacobian_init_chain_rule(expr *node)
     mnode->term1_CSR = YT_kron_I_alloc(m, k, n, f->work->jacobian_csc);
     mnode->term2_CSR = I_kron_X_alloc(m, k, n, g->work->jacobian_csc);
     int max_nnz = mnode->term1_CSR->nnz + mnode->term2_CSR->nnz;
+    max_nnz = MIN(max_nnz, sat_mul_int(node->size, node->n_vars));
     CSR_matrix *jac = new_CSR_matrix(node->size, node->n_vars, max_nnz);
     sum_csr_alloc(mnode->term1_CSR, mnode->term2_CSR, jac);
     node->jacobian = new_sparse_matrix(jac);
@@ -263,7 +268,8 @@ static void eval_jacobian_chain_rule(expr *node)
     YT_kron_I_fill_values(m, k, n, g->value, f->work->jacobian_csc,
                           mnode->term1_CSR);
     I_kron_X_fill_values(m, k, n, f->value, g->work->jacobian_csc, mnode->term2_CSR);
-    sum_csr_fill_values(mnode->term1_CSR, mnode->term2_CSR, node->jacobian->to_csr(node->jacobian));
+    sum_csr_fill_values(mnode->term1_CSR, mnode->term2_CSR,
+                        ((sparse_matrix *) node->jacobian)->csr);
 }
 
 // ------------------------------------------------------------------------------------
@@ -428,12 +434,12 @@ static void wsum_hess_init_chain_rule(expr *node)
     mnode->B = build_cross_hessian_sparsity(m, k, n);
     mnode->BJg = csr_csc_matmul_alloc(mnode->B, Jg);
     int max_alloc = MAX(mnode->BJg->m, mnode->BJg->n);
-    mnode->BJg_csc_work = (int *) SP_MALLOC(max_alloc * sizeof(int));
+    mnode->BJg_csc_work = (int *) sp_malloc(max_alloc * sizeof(int));
     mnode->BJg_CSC = csr_to_csc_alloc(mnode->BJg, mnode->BJg_csc_work);
     mnode->C = BTA_alloc(mnode->BJg_CSC, Jf);
 
     /* initialize C^T */
-    node->work->iwork = (int *) SP_MALLOC(mnode->C->m * sizeof(int));
+    node->work->iwork = (int *) sp_malloc(mnode->C->m * sizeof(int));
     mnode->CT = AT_alloc(mnode->C, node->work->iwork);
 
     /* initialize Hessians of children */
@@ -451,11 +457,26 @@ static void wsum_hess_init_chain_rule(expr *node)
     mnode->idx_map_Hf = maps[2];
     mnode->idx_map_Hg = maps[3];
 
+    /* If f/g wsum_hess is stacked_pd, re-index its idx_map so accumulation
+       with eval_wsum_hess works correctly */
+    if (f->wsum_hess->is_stacked_pd)
+    {
+        compose_csr_idx_map_for_spd((const stacked_pd *) f->wsum_hess,
+                                    f->wsum_hess->to_csr(f->wsum_hess),
+                                    mnode->idx_map_Hf);
+    }
+    if (g->wsum_hess->is_stacked_pd)
+    {
+        compose_csr_idx_map_for_spd((const stacked_pd *) g->wsum_hess,
+                                    g->wsum_hess->to_csr(g->wsum_hess),
+                                    mnode->idx_map_Hg);
+    }
+
     /* allocate weight backprop workspace */
     if (!f->is_affine(f) || !g->is_affine(g))
     {
         node->work->dwork =
-            (double *) SP_MALLOC(MAX(f->size, g->size) * sizeof(double));
+            (double *) sp_malloc(MAX(f->size, g->size) * sizeof(double));
     }
 }
 
@@ -475,7 +496,8 @@ static void eval_wsum_hess_chain_rule(expr *node, const double *w)
     /* refresh child Jacobian CSC_matrix values (cache if affine) */
     if (!f->work->jacobian_csc_filled)
     {
-        csr_to_csc_fill_values(f->jacobian->to_csr(f->jacobian), Jf, f->work->csc_work);
+        csr_to_csc_fill_values(f->jacobian->to_csr(f->jacobian), Jf,
+                               f->work->csc_work);
         if (is_f_affine)
         {
             f->work->jacobian_csc_filled = true;
@@ -485,7 +507,8 @@ static void eval_wsum_hess_chain_rule(expr *node, const double *w)
     /* refresh child Jacobian CSC_matrix values (cache if affine) */
     if (!g->work->jacobian_csc_filled)
     {
-        csr_to_csc_fill_values(g->jacobian->to_csr(g->jacobian), Jg, g->work->csc_work);
+        csr_to_csc_fill_values(g->jacobian->to_csr(g->jacobian), Jg,
+                               g->work->csc_work);
         if (is_g_affine)
         {
             g->work->jacobian_csc_filled = true;
@@ -538,7 +561,7 @@ expr *new_matmul(expr *x, expr *y)
     }
 
     /* Allocate the expression node */
-    expr *node = (expr *) SP_CALLOC(1, sizeof(matmul_expr));
+    expr *node = (expr *) sp_calloc(1, sizeof(matmul_expr));
 
     /* Choose no-chain-rule or chain-rule function pointers */
     bool use_chain_rule = !(x->var_id != NOT_A_VARIABLE &&

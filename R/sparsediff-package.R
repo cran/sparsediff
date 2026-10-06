@@ -4,7 +4,47 @@
 #' Hessian differentiation backend used by 'CVXPY' for its Disciplined
 #' Nonlinear Programming (DNLP) extension. This package is the R analog of the
 #' 'sparsediffpy' Python package and wraps the same C library (pinned at the
-#' upstream v0.3.0 release).
+#' upstream v0.6.1 release).
+#'
+#' @section Correspondence with 'sparsediffpy':
+#' Every 'sparsediffpy' 0.6.1 function has an \code{sd_*} counterpart that
+#' calls the same engine routine with the same arguments in the same order.
+#' Names map \code{make_<atom>} to \code{sd_<atom>} and \code{problem_<step>}
+#' to \code{sd_<step>} (for example \code{make_exp} to \code{sd_exp},
+#' \code{problem_init_jacobian} to \code{sd_init_jacobian}), with these
+#' exceptions:
+#' \itemize{
+#'   \item \code{make_multiply}: \code{sd_elementwise_mult};
+#'     \code{make_param_scalar_mult} / \code{make_param_vector_mult}:
+#'     \code{sd_scalar_mult} / \code{sd_vector_mult}.
+#'   \item \code{make_left_matmul}, \code{make_right_matmul} and
+#'     \code{make_quad_form}, which take a format string, are split by format:
+#'     \code{"sparse"} is \code{sd_left_matmul}, \code{sd_right_matmul},
+#'     \code{sd_quad_form}; \code{"dense"} is \code{sd_left_matmul_dense},
+#'     \code{sd_right_matmul_dense}, \code{sd_quad_form_dense}.
+#'   \item \code{make_rel_entr}: \code{sd_rel_entr}, which dispatches on operand
+#'     size the same way; the two scalar cases are also available directly as
+#'     \code{sd_rel_entr_first_scalar} and \code{sd_rel_entr_second_scalar}.
+#'   \item \code{get_jacobian_sparsity_coo}, \code{problem_eval_jacobian_vals}:
+#'     \code{sd_jacobian_sparsity}, \code{sd_jacobian_values};
+#'     \code{problem_init_hessian_coo_lower_triangular},
+#'     \code{get_problem_hessian_sparsity_coo},
+#'     \code{problem_eval_hessian_vals_coo}: \code{sd_init_hessian_coo},
+#'     \code{sd_hessian_sparsity}, \code{sd_hessian_values};
+#'     \code{get_jacobian}, \code{get_hessian}, \code{get_expr_dimensions},
+#'     \code{get_expr_size}: \code{sd_get_jacobian}, \code{sd_get_hessian},
+#'     \code{sd_get_expr_dimensions}, \code{sd_get_expr_size}.
+#'   \item Arguments that are optional in 'sparsediffpy' are required here
+#'     (R stubs have no defaults): \code{verbose} of \code{sd_problem},
+#'     \code{values} of \code{sd_parameter} (the engine requires it anyway),
+#'     and \code{n_vars} of \code{sd_hstack} / \code{sd_vstack}, which
+#'     'sparsediffpy' takes from the first argument.
+#'   \item The parameter argument of the sparse matrix products is not exposed:
+#'     the engine aborts on it.
+#' }
+#' Indices are 0-based as in 'sparsediffpy'. CSR results are a list with
+#' \code{data}, \code{indices}, \code{indptr} and \code{shape}, the pieces of
+#' its \code{(data, indices, indptr, (m, n))} tuple.
 #'
 #' @useDynLib sparsediff, .registration = TRUE
 #' @keywords internal

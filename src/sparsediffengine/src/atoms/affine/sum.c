@@ -21,6 +21,7 @@
 #include "utils/int_double_pair.h"
 #include "utils/mini_numpy.h"
 #include "utils/sparse_matrix.h"
+#include "utils/stacked_pd.h"
 #include "utils/tracked_alloc.h"
 #include "utils/utils.h"
 #include <assert.h>
@@ -84,38 +85,13 @@ static void jacobian_init_impl(expr *node)
 {
     expr *x = node->left;
     sum_expr *snode = (sum_expr *) node;
-    int axis = snode->axis;
-
-    /* initialize child's jacobian */
     jacobian_init(x);
-    CSR_matrix *Jx = x->jacobian->to_csr(x->jacobian);
 
-    /* we never have to store more than the child's nnz */
-    CSR_matrix *jac = new_CSR_matrix(node->size, node->n_vars, Jx->nnz);
-    node->work->iwork = SP_MALLOC(MAX(jac->n, Jx->nnz) * sizeof(int));
-    snode->idx_map = SP_MALLOC(Jx->nnz * sizeof(int));
-
-    /* the idx_map array maps each nonzero entry j in x->jacobian
-       to the corresponding index in the output row matrix C. Specifically, for
-       each nonzero entry j in A, idx_map[j] gives the position in C->x where
-       the value from x->jacobian->x[j] should be accumulated. */
-
-    if (axis == -1)
-    {
-        sum_all_rows_csr_alloc(Jx, jac, node->work->iwork, snode->idx_map);
-    }
-    else if (axis == 0)
-    {
-        sum_block_of_rows_csr_alloc(Jx, jac, x->d1, node->work->iwork,
-                                    snode->idx_map);
-    }
-    else if (axis == 1)
-    {
-        sum_evenly_spaced_rows_csr_alloc(Jx, jac, node->size, node->work->iwork,
-                                         snode->idx_map);
-    }
-
-    node->jacobian = new_sparse_matrix(jac);
+    /* sum_row_partition_alloc fills idx_map so eval_jacobian can accumulate from
+       child->jacobian->x. */
+    snode->idx_map = sp_malloc(x->jacobian->nnz * sizeof(int));
+    node->jacobian = x->jacobian->sum_row_partition_alloc(x->jacobian, snode->axis,
+                                                          x->d1, snode->idx_map);
 }
 
 static void eval_jacobian(expr *node)
@@ -140,7 +116,7 @@ static void wsum_hess_init_impl(expr *node)
 
     /* we never have to store more than the child's nnz */
     node->wsum_hess = child->wsum_hess->copy_sparsity(child->wsum_hess);
-    node->work->dwork = SP_MALLOC(child->size * sizeof(double));
+    node->work->dwork = sp_malloc(child->size * sizeof(double));
 }
 
 static void eval_wsum_hess(expr *node, const double *w)
@@ -176,7 +152,7 @@ static bool is_affine(const expr *node)
 static void free_type_data(expr *node)
 {
     sum_expr *snode = (sum_expr *) node;
-    free(snode->idx_map);
+    sp_free(snode->idx_map);
 }
 
 expr *new_sum(expr *child, int axis)
@@ -200,7 +176,7 @@ expr *new_sum(expr *child, int axis)
     }
 
     /* Allocate the type-specific struct */
-    sum_expr *snode = (sum_expr *) SP_CALLOC(1, sizeof(sum_expr));
+    sum_expr *snode = (sum_expr *) sp_calloc(1, sizeof(sum_expr));
     expr *node = &snode->base;
 
     /* to be consistent with CVXPY and NumPy we treat the result from

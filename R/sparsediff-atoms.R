@@ -27,8 +27,28 @@
 #'   column-major).
 #' @return An expression handle.
 #' @seealso \code{\link{sparsediff-elementwise}}, \code{\link{sd_problem}}
+#' @usage
+#' sd_variable(d1, d2, var_id, n_vars)
+#' sd_parameter(d1, d2, param_id, n_vars, values)
 #' @name sparsediff-leaves
 #' @aliases sd_variable sd_parameter
+NULL
+
+#' Expression shape
+#'
+#' The dimensions and the number of entries of an expression node (the
+#' 'sparsediffpy' \code{get_expr_dimensions} and \code{get_expr_size}).
+#'
+#' @param node an expression handle.
+#' @return \code{sd_get_expr_dimensions}: an integer vector \code{c(d1, d2)},
+#'   the node's rows and columns. \code{sd_get_expr_size}: an integer scalar,
+#'   the number of entries \code{d1 * d2}.
+#' @seealso \code{\link{sparsediff-leaves}}
+#' @usage
+#' sd_get_expr_dimensions(node)
+#' sd_get_expr_size(node)
+#' @name sparsediff-getters
+#' @aliases sd_get_expr_dimensions sd_get_expr_size
 NULL
 
 #' Elementwise atoms
@@ -52,9 +72,24 @@ NULL
 #'   \item{\code{sd_neg}}{negation \eqn{-x}.}
 #' }
 #' @seealso \code{\link{sparsediff-affine}}, \code{\link{sparsediff-bivariate}}
+#' @usage
+#' sd_exp(child)
+#' sd_log(c)
+#' sd_sin(c)
+#' sd_cos(c)
+#' sd_tan(c)
+#' sd_sinh(c)
+#' sd_tanh(c)
+#' sd_asinh(c)
+#' sd_atanh(c)
+#' sd_logistic(c)
+#' sd_xexp(c)
+#' sd_normal_cdf(c)
+#' sd_entr(c)
+#' sd_power(c, p)
+#' sd_neg(child)
 #' @name sparsediff-elementwise
-#' @aliases sd_exp sd_log sd_sin sd_cos sd_tan sd_sinh sd_tanh sd_asinh sd_atanh
-#'   sd_logistic sd_xexp sd_normal_cdf sd_entr sd_power sd_neg
+#' @aliases sd_exp sd_log sd_sin sd_cos sd_tan sd_sinh sd_tanh sd_asinh sd_atanh sd_logistic sd_xexp sd_normal_cdf sd_entr sd_power sd_neg
 NULL
 
 #' Affine and shape atoms
@@ -88,9 +123,22 @@ NULL
 #'   \item{\code{sd_hstack}, \code{sd_vstack}}{horizontal / vertical stacking.}
 #' }
 #' @seealso \code{\link{sparsediff-elementwise}}, \code{\link{sparsediff-matrix}}
+#' @usage
+#' sd_add(left, right)
+#' sd_sum(child, axis)
+#' sd_trace(c)
+#' sd_transpose(c)
+#' sd_diag_vec(c)
+#' sd_diag_mat(c)
+#' sd_upper_tri(c)
+#' sd_promote(c, d1, d2)
+#' sd_reshape(c, d1, d2)
+#' sd_broadcast(c, d1, d2)
+#' sd_index(child, d1, d2, indices)
+#' sd_hstack(args, n_vars)
+#' sd_vstack(args, n_vars)
 #' @name sparsediff-affine
-#' @aliases sd_add sd_sum sd_trace sd_transpose sd_diag_vec sd_diag_mat
-#'   sd_upper_tri sd_promote sd_reshape sd_broadcast sd_index sd_hstack sd_vstack
+#' @aliases sd_add sd_sum sd_trace sd_transpose sd_diag_vec sd_diag_mat sd_upper_tri sd_promote sd_reshape sd_broadcast sd_index sd_hstack sd_vstack
 NULL
 
 #' Bivariate atoms
@@ -104,14 +152,24 @@ NULL
 #'   \item{\code{sd_elementwise_mult}}{elementwise (Hadamard) product.}
 #'   \item{\code{sd_matmul}}{matrix product \eqn{x y}.}
 #'   \item{\code{sd_quad_over_lin}}{the quadratic-over-linear \eqn{\lVert x \rVert^2 / y}.}
-#'   \item{\code{sd_rel_entr}}{elementwise relative entropy \eqn{x \log(x / y)}.}
+#'   \item{\code{sd_rel_entr}}{relative entropy \eqn{x \log(x / y)}. Like
+#'     'sparsediffpy' \code{make_rel_entr}, it dispatches on operand size: a
+#'     scalar \code{l} with a non-scalar \code{r} uses
+#'     \code{sd_rel_entr_first_scalar}, the reverse uses
+#'     \code{sd_rel_entr_second_scalar}, and otherwise it is elementwise.}
 #'   \item{\code{sd_rel_entr_first_scalar}, \code{sd_rel_entr_second_scalar}}{relative
 #'     entropy with a scalar first or second argument broadcast against the other.}
 #' }
 #' @seealso \code{\link{sparsediff-elementwise}}, \code{\link{sparsediff-reduction}}
+#' @usage
+#' sd_elementwise_mult(l, r)
+#' sd_matmul(x, y)
+#' sd_quad_over_lin(l, r)
+#' sd_rel_entr(l, r)
+#' sd_rel_entr_first_scalar(l, r)
+#' sd_rel_entr_second_scalar(l, r)
 #' @name sparsediff-bivariate
-#' @aliases sd_elementwise_mult sd_matmul sd_quad_over_lin sd_rel_entr
-#'   sd_rel_entr_first_scalar sd_rel_entr_second_scalar
+#' @aliases sd_elementwise_mult sd_matmul sd_quad_over_lin sd_rel_entr sd_rel_entr_first_scalar sd_rel_entr_second_scalar
 NULL
 
 #' Product-reduction atoms
@@ -127,6 +185,10 @@ NULL
 #'   \item{\code{sd_prod_axis_one}}{row-wise products (reduce across columns).}
 #' }
 #' @seealso \code{\link{sparsediff-affine}}
+#' @usage
+#' sd_prod(c)
+#' sd_prod_axis_zero(c)
+#' sd_prod_axis_one(c)
 #' @name sparsediff-reduction
 #' @aliases sd_prod sd_prod_axis_zero sd_prod_axis_one
 NULL
@@ -139,15 +201,28 @@ NULL
 #'
 #' @param param a parameter expression handle (see \code{\link{sd_parameter}}).
 #' @param child an expression handle (the variable argument).
-#' @param Qp,Qi,Qx the column-pointer, row-index and value arrays of a
-#'   compressed-sparse-column matrix \eqn{Q} (as in a \code{Matrix::dgCMatrix}:
-#'   \code{@p}, \code{@i}, \code{@x}) for \code{sd_quad_form}'s \eqn{x^\top Q x}.
-#' @param Ap,Ai,Ax the compressed-sparse-column arrays of a constant matrix
-#'   \eqn{A} for the sparse matrix products.
+#' @param Qp,Qi,Qx the row-pointer, column-index and value arrays of a
+#'   compressed-sparse-row (CSR) matrix \eqn{Q} for \code{sd_quad_form}'s
+#'   \eqn{x^\top Q x}. \eqn{Q} must be symmetric, so its CSR arrays equal its
+#'   compressed-sparse-column arrays and the \code{@p}, \code{@i}, \code{@x}
+#'   slots of a \code{Matrix::dgCMatrix} holding \eqn{Q} can be passed directly.
+#' @param Ap,Ai,Ax the row-pointer, column-index and value arrays of a constant
+#'   matrix \eqn{A} in compressed-sparse-row (CSR) form, for the sparse matrix
+#'   products. These are the \code{@p}, \code{@i}, \code{@x} slots of a
+#'   \code{Matrix::dgCMatrix} holding \eqn{A^\top}, not \eqn{A}.
 #' @param ncol number of columns of the sparse constant matrix \eqn{A}.
 #' @param m,n row and column dimensions of the dense constant matrix.
-#' @param data the dense constant-matrix entries (length \code{m * n},
-#'   column-major).
+#' @param p,q,r,s for the Kronecker products \eqn{Z = A \otimes B}: \eqn{A} is
+#'   \eqn{p \times q} and \eqn{B} is \eqn{r \times s}.
+#' @param active_blocks for the Kronecker products, an integer vector of 0-based
+#'   column-major indices of the nonzero entries of the variable-free operand
+#'   (\code{param}); only the output rows they cover are built. For a
+#'   parametric operand pass every index, \code{0:(length - 1)}.
+#' @param data the dense constant-matrix entries in row-major order (length
+#'   \code{m * n} for the matrix products, \code{n * n} for
+#'   \code{sd_quad_form_dense}); for an R matrix \code{M}, pass
+#'   \code{as.vector(t(M))}. Pass \code{numeric(0)} when the matrix comes from
+#'   \code{param}.
 #' @return An expression handle.
 #' @details
 #' \describe{
@@ -156,13 +231,41 @@ NULL
 #'   \item{\code{sd_convolve}}{convolution of a parameter kernel with a child.}
 #'   \item{\code{sd_quad_form}}{the quadratic form \eqn{x^\top Q x} with sparse
 #'     constant \eqn{Q}.}
+#'   \item{\code{sd_quad_form_dense}}{the quadratic form \eqn{x^\top Q x} with a
+#'     dense symmetric \eqn{n \times n} \eqn{Q}, where \eqn{n} is the length of
+#'     the vector \code{child}. Supply exactly one source: \code{param = NULL}
+#'     and \code{data} for a constant \eqn{Q} (checked for symmetry), or a
+#'     parameter handle of size \eqn{n^2} with \code{data = numeric(0)} for a
+#'     parametric \eqn{Q} that follows \code{\link{sd_update_params}}. A
+#'     parametric \eqn{Q} is not checked: keeping it symmetric is the caller's
+#'     responsibility.}
 #'   \item{\code{sd_left_matmul}, \code{sd_right_matmul}}{left / right product
 #'     with a sparse constant matrix \eqn{A}.}
 #'   \item{\code{sd_left_matmul_dense}, \code{sd_right_matmul_dense}}{left / right
-#'     product with a dense constant matrix.}
+#'     product with a dense constant or parametric matrix.}
+#'   \item{\code{sd_left_kron}, \code{sd_right_kron}}{the Kronecker product
+#'     \eqn{A \otimes B} with the variable-free operand \code{param} on the
+#'     left (\eqn{A}) or on the right (\eqn{B}) and the variable operand
+#'     \code{child} on the other side. \code{param} may be a parameter or a
+#'     constant made with \code{sd_parameter(..., param_id = -1, ...)}.}
 #' }
+#' A parameter cannot be the source of the sparse products
+#' \code{sd_left_matmul} / \code{sd_right_matmul} (the engine does not support
+#' it; 'sparsediffpy' accepts the argument but the engine then aborts); use the
+#' dense products for a parametric matrix.
 #' @seealso \code{\link{sd_parameter}}, \code{\link{sd_register_params}}
+#' @usage
+#' sd_scalar_mult(param, child)
+#' sd_vector_mult(param, child)
+#' sd_convolve(param, child)
+#' sd_quad_form(child, Qp, Qi, Qx)
+#' sd_quad_form_dense(param, child, data)
+#' sd_left_matmul(child, Ap, Ai, Ax, ncol)
+#' sd_right_matmul(child, Ap, Ai, Ax, ncol)
+#' sd_left_matmul_dense(param, child, m, n, data)
+#' sd_right_matmul_dense(param, child, m, n, data)
+#' sd_left_kron(param, child, p, q, r, s, active_blocks)
+#' sd_right_kron(param, child, p, q, r, s, active_blocks)
 #' @name sparsediff-matrix
-#' @aliases sd_scalar_mult sd_vector_mult sd_convolve sd_quad_form sd_left_matmul
-#'   sd_right_matmul sd_left_matmul_dense sd_right_matmul_dense
+#' @aliases sd_scalar_mult sd_vector_mult sd_convolve sd_quad_form sd_quad_form_dense sd_left_matmul sd_right_matmul sd_left_matmul_dense sd_right_matmul_dense sd_left_kron sd_right_kron
 NULL

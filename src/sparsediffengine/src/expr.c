@@ -32,7 +32,7 @@ void init_expr(expr *node, int d1, int d2, int n_vars, forward_fn forward,
     node->size = d1 * d2;
     node->n_vars = n_vars;
     node->refcount = 0;
-    node->value = (double *) SP_CALLOC(d1 * d2, sizeof(double));
+    node->value = (double *) sp_calloc(d1 * d2, sizeof(double));
     node->var_id = NOT_A_VARIABLE;
     node->forward = forward;
     node->jacobian_init_impl = jacobian_init;
@@ -41,7 +41,7 @@ void init_expr(expr *node, int d1, int d2, int n_vars, forward_fn forward,
     node->wsum_hess_init_impl = wsum_hess_init;
     node->eval_wsum_hess = eval_wsum_hess;
     node->free_type_data = free_type_data;
-    node->work = (Expr_Work *) SP_CALLOC(1, sizeof(Expr_Work));
+    node->work = (Expr_Work *) sp_calloc(1, sizeof(Expr_Work));
 }
 
 void jacobian_csc_init(expr *node)
@@ -50,9 +50,9 @@ void jacobian_csc_init(expr *node)
     {
         return;
     }
-    node->work->csc_work = (int *) SP_MALLOC(node->n_vars * sizeof(int));
-    node->work->jacobian_csc =
-        csr_to_csc_alloc(node->jacobian->to_csr(node->jacobian), node->work->csc_work);
+    node->work->csc_work = (int *) sp_malloc(node->n_vars * sizeof(int));
+    node->work->jacobian_csc = csr_to_csc_alloc(
+        node->jacobian->to_csr(node->jacobian), node->work->csc_work);
 }
 
 void free_expr(expr *node)
@@ -75,25 +75,25 @@ void free_expr(expr *node)
     }
 
     /* free value array and derivative matrices */
-    free(node->value);
+    sp_free(node->value);
     free_matrix(node->jacobian);
     free_matrix(node->wsum_hess);
 
     /* free workspace */
     if (node->work)
     {
-        free(node->work->dwork);
-        free(node->work->iwork);
+        sp_free(node->work->dwork);
+        sp_free(node->work->iwork);
         free_CSC_matrix(node->work->jacobian_csc);
-        free(node->work->csc_work);
-        free(node->work->local_jac_diag);
+        sp_free(node->work->csc_work);
+        sp_free(node->work->local_jac_diag);
         free_matrix(node->work->hess_term1);
         free_matrix(node->work->hess_term2);
-        free(node->work);
+        sp_free(node->work);
     }
 
     /* free the node itself */
-    free(node);
+    sp_free(node);
 }
 
 void jacobian_init(expr *node)

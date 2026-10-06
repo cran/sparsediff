@@ -6,6 +6,11 @@
 \alias{sd_register_params}
 \alias{sd_update_params}
 \title{Assemble a differentiable problem}
+\usage{
+sd_problem(objective, constraints, verbose)
+sd_register_params(prob, params)
+sd_update_params(prob, theta)
+}
 \arguments{
 \item{objective}{an expression handle for the scalar objective.}
 

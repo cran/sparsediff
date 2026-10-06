@@ -16,6 +16,7 @@
 // last owner cleans up the whole DAG exactly once, in any order.
 
 #include <cpp11.hpp>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -102,6 +103,16 @@ static CSR_matrix csr_view(SEXP p, SEXP i, SEXP x, int ncol) {
 // ---------------------------------------------------------------------------
 [[cpp11::register]]
 std::string sd_engine_version() { return std::string(DIFF_ENGINE_VERSION); }
+
+// Node shape getters (sparsediffpy get_expr_dimensions / get_expr_size).
+[[cpp11::register]]
+integers sd_get_expr_dimensions(SEXP node) {
+  expr* e = as_expr(node);
+  writable::integers d({e->d1, e->d2});
+  return d;
+}
+[[cpp11::register]]
+int sd_get_expr_size(SEXP node) { return as_expr(node)->size; }
 
 // Self-test of the CBLAS->Fortran-BLAS shim: row-major C(2x2)=A(2x3)B(3x2).
 [[cpp11::register]]
@@ -199,9 +210,37 @@ SEXP sd_vstack(list args, int n_vars) {
 
 // ---- bivariate, restricted domain ----
 [[cpp11::register]] SEXP sd_quad_over_lin(SEXP l, SEXP r)          { return wrap_expr(new_quad_over_lin(as_expr(l), as_expr(r))); }
-[[cpp11::register]] SEXP sd_rel_entr(SEXP l, SEXP r)               { return wrap_expr(new_rel_entr_vector_args(as_expr(l), as_expr(r))); }
-[[cpp11::register]] SEXP sd_rel_entr_first_scalar(SEXP l, SEXP r)  { return wrap_expr(new_rel_entr_first_arg_scalar(as_expr(l), as_expr(r))); }
-[[cpp11::register]] SEXP sd_rel_entr_second_scalar(SEXP l, SEXP r) { return wrap_expr(new_rel_entr_second_arg_scalar(as_expr(l), as_expr(r))); }
+// All three relative-entropy atoms require both arguments to be DISTINCT
+// variable leaves (CVXPY's canonicalization guarantees it). The engine only
+// asserts this (compiled out under NDEBUG); violating it overflows the heap
+// while the derivative structure is built (seen under ASAN), so check here.
+static void check_rel_entr_args(const char* who, const expr* a, const expr* b) {
+  if (a->var_id == NOT_A_VARIABLE || b->var_id == NOT_A_VARIABLE)
+    stop("%s: both arguments must be variables (sd_variable)", who);
+  if (a->var_id == b->var_id) stop("%s: the two arguments must be different variables", who);
+}
+// sd_rel_entr dispatches on operand size exactly as sparsediffpy make_rel_entr:
+// scalar first argument, scalar second argument, or elementwise.
+[[cpp11::register]] SEXP sd_rel_entr(SEXP l, SEXP r) {
+  expr* a = as_expr(l);
+  expr* b = as_expr(r);
+  check_rel_entr_args("sd_rel_entr", a, b);
+  if (a->size == 1 && b->size > 1) return wrap_expr(new_rel_entr_first_arg_scalar(a, b));
+  if (a->size > 1 && b->size == 1) return wrap_expr(new_rel_entr_second_arg_scalar(a, b));
+  return wrap_expr(new_rel_entr_vector_args(a, b));
+}
+[[cpp11::register]] SEXP sd_rel_entr_first_scalar(SEXP l, SEXP r) {
+  expr* a = as_expr(l);
+  expr* b = as_expr(r);
+  check_rel_entr_args("sd_rel_entr_first_scalar", a, b);
+  return wrap_expr(new_rel_entr_first_arg_scalar(a, b));
+}
+[[cpp11::register]] SEXP sd_rel_entr_second_scalar(SEXP l, SEXP r) {
+  expr* a = as_expr(l);
+  expr* b = as_expr(r);
+  check_rel_entr_args("sd_rel_entr_second_scalar", a, b);
+  return wrap_expr(new_rel_entr_second_arg_scalar(a, b));
+}
 
 // ---- non-elementwise, full domain ----
 [[cpp11::register]] SEXP sd_prod(SEXP c)           { return wrap_expr(new_prod(as_expr(c))); }
@@ -229,10 +268,91 @@ SEXP sd_parameter(int d1, int d2, int param_id, int n_vars, SEXP values) {
 SEXP sd_quad_form(SEXP child, SEXP Qp, SEXP Qi, SEXP Qx) {
   int n = static_cast<int>(Rf_length(Qp)) - 1;
   CSR_matrix Q = csr_view(Qp, Qi, Qx, n);
-  return wrap_expr(new_quad_form(as_expr(child), &Q));  // engine copies Q
+  return wrap_expr(new_quad_form_sparse(as_expr(child), &Q));  // engine copies Q
+}
+
+// quadratic form  x' Q x  with a DENSE n x n Q, n = length of the vector child.
+// Exactly one source: param = NULL with row-major `data` (n*n doubles) for a
+// constant Q; or a parameter node (size n*n) with empty `data` for a parametric
+// Q, refreshed from the parameter on every forward pass. The engine copies
+// `data`. Q must be symmetric (the engine's gradient is 2 Q x): checked here for
+// constant data, the caller's contract for a parameter. All validation happens
+// before the engine is called, because R builds define NDEBUG (the engine's
+// asserts are compiled out) and an engine-side error longjmps out of the call.
+[[cpp11::register]]
+SEXP sd_quad_form_dense(SEXP param, SEXP child, SEXP data) {
+  expr* c = as_expr(child);
+  if (c->d1 != 1 && c->d2 != 1)
+    stop("sd_quad_form_dense: child must be a vector, not %d x %d", c->d1, c->d2);
+  const int n = c->size;
+  const bool has_param = (param != R_NilValue);
+  const R_xlen_t len = Rf_xlength(data);
+  if (has_param == (len > 0))
+    stop("sd_quad_form_dense: supply exactly one of `param` and non-empty `data`");
+  if (has_param) {
+    expr* q = as_expr(param);
+    if (q->size != n * n)
+      stop("sd_quad_form_dense: parameter has %d entries, expected n*n = %d", q->size, n * n);
+    return wrap_expr(new_quad_form_dense(c, n, nullptr, q));
+  }
+  if (TYPEOF(data) != REALSXP) stop("sd_quad_form_dense: `data` must be a double vector");
+  if (len != static_cast<R_xlen_t>(n) * n)
+    stop("sd_quad_form_dense: `data` has length %d, expected n*n = %d", static_cast<int>(len), n * n);
+  const double* Q = REAL(data);
+  for (int i = 0; i < n; i++) {
+    for (int j = i + 1; j < n; j++) {
+      const double a = Q[i * n + j], b = Q[j * n + i];
+      if (std::fabs(a - b) > 1e-8 * (1.0 + std::fmax(std::fabs(a), std::fabs(b))))
+        stop("sd_quad_form_dense: Q is not symmetric (entries [%d,%d] and [%d,%d] differ)",
+             i + 1, j + 1, j + 1, i + 1);
+    }
+  }
+  return wrap_expr(new_quad_form_dense(c, n, Q, nullptr));
+}
+
+// Kronecker products  Z = kron(A, B)  with one variable-free operand `param`
+// (a parameter, or a constant made with sd_parameter(..., param_id = -1, ...))
+// and one variable operand `child`. Mirrors sparsediffpy make_left_kron /
+// make_right_kron. left: A = param (p x q), B = child (r x s); right: A = child
+// (p x q), B = param (r x s). active_blocks are the 0-based column-major indices
+// of the constant operand's nonzero entries (all of them for a parameter); only
+// the output rows they cover are materialized. Validated here because the
+// engine only asserts (compiled out under NDEBUG).
+static SEXP kron_impl(SEXP param, SEXP child, int p, int q, int r, int s,
+                      SEXP active_blocks, bool is_left) {
+  const char* who = is_left ? "sd_left_kron" : "sd_right_kron";
+  if (p < 1 || q < 1 || r < 1 || s < 1) stop("%s: p, q, r, s must be positive", who);
+  expr* k = as_expr(param);
+  expr* c = as_expr(child);
+  const int kd1 = is_left ? p : r, kd2 = is_left ? q : s;  // constant operand
+  const int cd1 = is_left ? r : p, cd2 = is_left ? s : q;  // variable operand
+  if (k->size != kd1 * kd2)
+    stop("%s: `param` has %d entries, expected %d x %d", who, k->size, kd1, kd2);
+  if (c->size != cd1 * cd2)
+    stop("%s: `child` has %d entries, expected %d x %d", who, c->size, cd1, cd2);
+  if (TYPEOF(active_blocks) != INTSXP) stop("%s: `active_blocks` must be an integer vector", who);
+  const int n_active = static_cast<int>(Rf_xlength(active_blocks));
+  const int* ab = INTEGER(active_blocks);
+  for (int b = 0; b < n_active; b++) {
+    if (ab[b] == NA_INTEGER || ab[b] < 0 || ab[b] >= kd1 * kd2)
+      stop("%s: active_blocks[%d] = %d is outside [0, %d)", who, b + 1, ab[b], kd1 * kd2);
+  }
+  return wrap_expr(is_left ? new_left_kron(k, c, p, q, r, s, ab, n_active)
+                           : new_right_kron(k, c, p, q, r, s, ab, n_active));
+}
+[[cpp11::register]]
+SEXP sd_left_kron(SEXP param, SEXP child, int p, int q, int r, int s, SEXP active_blocks) {
+  return kron_impl(param, child, p, q, r, s, active_blocks, true);
+}
+[[cpp11::register]]
+SEXP sd_right_kron(SEXP param, SEXP child, int p, int q, int r, int s, SEXP active_blocks) {
+  return kron_impl(param, child, p, q, r, s, active_blocks, false);
 }
 
 // constant sparse-matrix products  A @ f(x)  and  f(x) @ A  (A is m x ncol CSR).
+// sparsediffpy's sparse form also takes a parameter, but engine 0.6.1 exits on
+// a parameter for a sparse matrix, so it is not exposed here; a parametric
+// matrix goes through sd_left_matmul_dense / sd_right_matmul_dense.
 [[cpp11::register]]
 SEXP sd_left_matmul(SEXP child, SEXP Ap, SEXP Ai, SEXP Ax, int ncol) {
   CSR_matrix A = csr_view(Ap, Ai, Ax, ncol);
@@ -362,7 +482,9 @@ doubles sd_jacobian_values(SEXP prob) {
 // ---- lower-triangular Lagrange Hessian ----
 [[cpp11::register]]
 void sd_init_hessian_coo(SEXP prob) {
-  problem_init_hessian_coo_lower_triangular(as_problem(prob));
+  problem* p = as_problem(prob);
+  problem_init_jacobian(p);  // see sd_init_hessian: the Hessian init needs it
+  problem_init_hessian_coo_lower_triangular(p);
 }
 
 [[cpp11::register]]
@@ -385,4 +507,77 @@ doubles sd_hessian_values(SEXP prob, double obj_w, doubles w) {
   writable::doubles vals(coo->nnz);
   for (int k = 0; k < coo->nnz; k++) vals[k] = coo->x[k];
   return vals;
+}
+
+// ---------------------------------------------------------------------------
+//  sparse derivatives in CSR form (sparsediffpy problem_jacobian / get_jacobian /
+//  problem_init_hessian / problem_hessian / get_hessian). Each returns
+//  list(data, indices, indptr, shape): the CSR arrays, 0-based, as in
+//  scipy.sparse.csr_array((data, indices, indptr), shape). The Jacobian is the
+//  stacked constraint Jacobian; the Hessian is the FULL (both triangles)
+//  Lagrangian Hessian obj_w * d2f + sum_i w_i d2g_i.
+// ---------------------------------------------------------------------------
+static list csr_list(const CSR_matrix* A, int indptr_len) {
+  writable::doubles data(A->nnz);
+  writable::integers indices(A->nnz), indptr(indptr_len);
+  for (int k = 0; k < A->nnz; k++) { data[k] = A->x[k]; indices[k] = A->i[k]; }
+  for (int k = 0; k < indptr_len; k++) indptr[k] = A->p[k];
+  writable::integers shape({A->m, A->n});
+  return writable::list({"data"_nm = data, "indices"_nm = indices,
+                         "indptr"_nm = indptr, "shape"_nm = shape});
+}
+
+// Evaluate the constraint Jacobian at the point of the last forward pass.
+[[cpp11::register]]
+list sd_jacobian(SEXP prob) {
+  problem* p = as_problem(prob);
+  if (p->n_constraints == 0) {
+    writable::doubles data(static_cast<R_xlen_t>(0));
+    writable::integers indices(static_cast<R_xlen_t>(0)), indptr({0});
+    writable::integers shape({0, p->n_vars});
+    return writable::list({"data"_nm = data, "indices"_nm = indices,
+                           "indptr"_nm = indptr, "shape"_nm = shape});
+  }
+  if (p->jacobian == nullptr) stop("sparsediff: call sd_init_jacobian() first");
+  problem_jacobian(p);
+  return csr_list(p->jacobian, p->jacobian->m + 1);
+}
+
+// The Jacobian as last evaluated, without re-evaluating it.
+[[cpp11::register]]
+list sd_get_jacobian(SEXP prob) {
+  problem* p = as_problem(prob);
+  if (p->jacobian == nullptr) stop("sparsediff: jacobian not initialized - call sd_jacobian() first");
+  return csr_list(p->jacobian, p->jacobian->m + 1);
+}
+
+// The engine's Hessian init reads the Jacobian structure and segfaults if it
+// does not exist yet (problem_init_derivatives orders the two for this reason),
+// so initialize the Jacobian first; it is idempotent and purely structural.
+[[cpp11::register]]
+void sd_init_hessian(SEXP prob) {
+  problem* p = as_problem(prob);
+  problem_init_jacobian(p);
+  problem_init_hessian(p);
+}
+
+// Evaluate the Lagrangian Hessian; w has length = total constraint size.
+[[cpp11::register]]
+list sd_hessian(SEXP prob, double obj_w, doubles w) {
+  problem* p = as_problem(prob);
+  if (p->lagrange_hessian == nullptr) stop("sparsediff: call sd_init_hessian() first");
+  if (static_cast<int>(w.size()) != p->total_constraint_size)
+    stop("sd_hessian: `w` has length %d, expected the total constraint size %d",
+         static_cast<int>(w.size()), p->total_constraint_size);
+  std::vector<double> wbuf(w.begin(), w.end());
+  problem_hessian(p, obj_w, wbuf.empty() ? nullptr : wbuf.data());
+  return csr_list(p->lagrange_hessian, p->lagrange_hessian->n + 1);
+}
+
+// The Hessian as last evaluated, without re-evaluating it.
+[[cpp11::register]]
+list sd_get_hessian(SEXP prob) {
+  problem* p = as_problem(prob);
+  if (p->lagrange_hessian == nullptr) stop("sparsediff: hessian not initialized - call sd_hessian() first");
+  return csr_list(p->lagrange_hessian, p->lagrange_hessian->n + 1);
 }

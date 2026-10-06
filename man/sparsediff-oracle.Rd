@@ -13,7 +13,30 @@
 \alias{sd_jacobian_values}
 \alias{sd_hessian_sparsity}
 \alias{sd_hessian_values}
+\alias{sd_jacobian}
+\alias{sd_get_jacobian}
+\alias{sd_init_hessian}
+\alias{sd_hessian}
+\alias{sd_get_hessian}
 \title{Sparse derivative oracle}
+\usage{
+sd_init_derivatives(prob)
+sd_init_jacobian(prob)
+sd_init_jacobian_coo(prob)
+sd_init_hessian_coo(prob)
+sd_objective_forward(prob, u)
+sd_constraint_forward(prob, u)
+sd_gradient(prob)
+sd_jacobian_sparsity(prob)
+sd_jacobian_values(prob)
+sd_hessian_sparsity(prob)
+sd_hessian_values(prob, obj_w, w)
+sd_jacobian(prob)
+sd_get_jacobian(prob)
+sd_init_hessian(prob)
+sd_hessian(prob, obj_w, w)
+sd_get_hessian(prob)
+}
 \arguments{
 \item{prob}{a problem handle from \code{\link{sd_problem}}.}
 
@@ -29,8 +52,18 @@ constraint size) weighting the constraint Hessians.}
 \value{
 \describe{
   \item{\code{sd_init_derivatives}, \code{sd_init_jacobian},
-    \code{sd_init_jacobian_coo}, \code{sd_init_hessian_coo}}{called for their
-    side effect; return \code{NULL} invisibly.}
+    \code{sd_init_jacobian_coo}, \code{sd_init_hessian},
+    \code{sd_init_hessian_coo}}{called for their side effect; return
+    \code{NULL} invisibly.}
+  \item{\code{sd_jacobian}, \code{sd_get_jacobian}, \code{sd_hessian},
+    \code{sd_get_hessian}}{a list with the CSR arrays of the matrix:
+    \code{data} (double), \code{indices} (0-based column indices) and
+    \code{indptr} (row pointers), plus \code{shape = c(nrow, ncol)}.
+    \code{sd_jacobian} evaluates the constraint Jacobian (after
+    \code{sd_init_jacobian} and a forward pass) and \code{sd_hessian} the
+    full Lagrangian Hessian \eqn{\sigma\nabla^2 f + \sum_i w_i \nabla^2 g_i}
+    (after \code{sd_init_hessian}); the \code{sd_get_*} forms return the
+    matrix as last evaluated, without re-evaluating it.}
   \item{\code{sd_objective_forward}}{the scalar objective value at \code{u}.}
   \item{\code{sd_constraint_forward}}{the constraint vector at \code{u}.}
   \item{\code{sd_gradient}}{the objective gradient, length \code{n_vars}.}
@@ -44,9 +77,11 @@ constraint size) weighting the constraint Hessians.}
 }
 }
 \description{
-Initialise and evaluate the value, gradient, sparse constraint Jacobian and
-sparse lower-triangular Lagrangian Hessian of a problem built with
-\code{\link{sd_problem}}.
+Initialize and evaluate the value, gradient, sparse constraint Jacobian and
+sparse Lagrangian Hessian of a problem built with \code{\link{sd_problem}}.
+Derivatives come in two forms, matching 'sparsediffpy': coordinate (COO)
+form, with the Hessian as its lower triangle (the form CVXPY uses), and
+compressed-sparse-row (CSR) form, with the full Hessian.
 }
 \details{
 Evaluation is ordered: a forward pass first
@@ -56,7 +91,7 @@ node values at \code{u}, after which \code{sd_gradient},
 patterns are structural --- fixed once the corresponding \code{sd_init_*}
 routine has run --- so they are queried once and reused, while the values are
 recomputed at each new point. Row and column indices are 0-based (the engine
-convention; a higher-level modelling layer such as \pkg{CVXR} translates them
+convention; a higher-level modeling layer such as \pkg{CVXR} translates them
 to 1-based as needed).
 }
 \seealso{

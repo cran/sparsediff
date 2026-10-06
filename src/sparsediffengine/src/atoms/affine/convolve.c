@@ -39,6 +39,9 @@ static void forward(expr *node, const double *u)
 
     if (cnode->base.needs_parameter_refresh)
     {
+        /* Composite sources hold gated nodes of their own (promote, nested
+           mults): mark the whole side subtree before re-evaluating it. */
+        expr_set_needs_refresh(cnode->param_source);
         cnode->param_source->forward(cnode->param_source, NULL);
         /* refresh the convolution matrix values if it exists (necessary to check
            for null in case someone calls forward before initializing the jacobian,
@@ -82,7 +85,8 @@ static void jacobian_init_impl(expr *node)
     conv_matrix_fill_values(cnode->T, a);
 
     /* J = T @ J_child */
-    cnode->Jchild_CSC = csr_to_csc_alloc(child->jacobian->to_csr(child->jacobian), node->work->iwork);
+    cnode->Jchild_CSC = csr_to_csc_alloc(child->jacobian->to_csr(child->jacobian),
+                                         node->work->iwork);
     node->jacobian =
         new_sparse_matrix(csr_csc_matmul_alloc(cnode->T, cnode->Jchild_CSC));
 }
@@ -95,8 +99,8 @@ static void eval_jacobian(expr *node)
     child->eval_jacobian(child);
 
     /* J = T @ J_child */
-    csr_to_csc_fill_values(child->jacobian->to_csr(child->jacobian), cnode->Jchild_CSC,
-                           node->work->iwork);
+    csr_to_csc_fill_values(child->jacobian->to_csr(child->jacobian),
+                           cnode->Jchild_CSC, node->work->iwork);
     csr_csc_matmul_fill_values(cnode->T, cnode->Jchild_CSC,
                                node->jacobian->to_csr(node->jacobian));
 }
@@ -108,7 +112,7 @@ static void wsum_hess_init_impl(expr *node)
 
     wsum_hess_init(child);
     node->wsum_hess = child->wsum_hess->copy_sparsity(child->wsum_hess);
-    node->work->dwork = (double *) SP_MALLOC(cnode->n * sizeof(double));
+    node->work->dwork = (double *) sp_malloc(cnode->n * sizeof(double));
 }
 
 static void eval_wsum_hess(expr *node, const double *w)
@@ -174,7 +178,7 @@ expr *new_convolve(expr *param_node, expr *child)
         exit(1);
     }
 
-    convolve_expr *cnode = (convolve_expr *) SP_CALLOC(1, sizeof(convolve_expr));
+    convolve_expr *cnode = (convolve_expr *) sp_calloc(1, sizeof(convolve_expr));
     expr *node = &cnode->base;
     init_expr(node, d1, d2, child->n_vars, forward, jacobian_init_impl,
               eval_jacobian, is_affine, wsum_hess_init_impl, eval_wsum_hess,
@@ -188,7 +192,7 @@ expr *new_convolve(expr *param_node, expr *child)
     cnode->n = n;
 
     /* iwork is used for csr_to_csc of child's Jacobian (size n_vars). */
-    node->work->iwork = (int *) SP_MALLOC(node->n_vars * sizeof(int));
+    node->work->iwork = (int *) sp_malloc(node->n_vars * sizeof(int));
 
     /* Ensure first forward() pulls current param values through any
        broadcast/promote wrappers and reflects them in T (once T is built). */

@@ -3,7 +3,7 @@
 #' Returns the version string of the SparseDiffEngine C library bundled with
 #' this package.
 #'
-#' @return A character scalar, e.g. \code{"0.3.0"}.
+#' @return A character scalar, e.g. \code{"0.6.1"}.
 #' @export
 #' @examples
 #' engine_version()

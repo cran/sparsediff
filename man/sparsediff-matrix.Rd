@@ -6,29 +6,60 @@
 \alias{sd_vector_mult}
 \alias{sd_convolve}
 \alias{sd_quad_form}
+\alias{sd_quad_form_dense}
 \alias{sd_left_matmul}
 \alias{sd_right_matmul}
 \alias{sd_left_matmul_dense}
 \alias{sd_right_matmul_dense}
+\alias{sd_left_kron}
+\alias{sd_right_kron}
 \title{Parameter- and constant-matrix atoms}
+\usage{
+sd_scalar_mult(param, child)
+sd_vector_mult(param, child)
+sd_convolve(param, child)
+sd_quad_form(child, Qp, Qi, Qx)
+sd_quad_form_dense(param, child, data)
+sd_left_matmul(child, Ap, Ai, Ax, ncol)
+sd_right_matmul(child, Ap, Ai, Ax, ncol)
+sd_left_matmul_dense(param, child, m, n, data)
+sd_right_matmul_dense(param, child, m, n, data)
+sd_left_kron(param, child, p, q, r, s, active_blocks)
+sd_right_kron(param, child, p, q, r, s, active_blocks)
+}
 \arguments{
 \item{param}{a parameter expression handle (see \code{\link{sd_parameter}}).}
 
 \item{child}{an expression handle (the variable argument).}
 
-\item{Qp, Qi, Qx}{the column-pointer, row-index and value arrays of a
-compressed-sparse-column matrix \eqn{Q} (as in a \code{Matrix::dgCMatrix}:
-\code{@p}, \code{@i}, \code{@x}) for \code{sd_quad_form}'s \eqn{x^\top Q x}.}
+\item{Qp, Qi, Qx}{the row-pointer, column-index and value arrays of a
+compressed-sparse-row (CSR) matrix \eqn{Q} for \code{sd_quad_form}'s
+\eqn{x^\top Q x}. \eqn{Q} must be symmetric, so its CSR arrays equal its
+compressed-sparse-column arrays and the \code{@p}, \code{@i}, \code{@x}
+slots of a \code{Matrix::dgCMatrix} holding \eqn{Q} can be passed directly.}
 
-\item{Ap, Ai, Ax}{the compressed-sparse-column arrays of a constant matrix
-\eqn{A} for the sparse matrix products.}
+\item{Ap, Ai, Ax}{the row-pointer, column-index and value arrays of a constant
+matrix \eqn{A} in compressed-sparse-row (CSR) form, for the sparse matrix
+products. These are the \code{@p}, \code{@i}, \code{@x} slots of a
+\code{Matrix::dgCMatrix} holding \eqn{A^\top}, not \eqn{A}.}
 
 \item{ncol}{number of columns of the sparse constant matrix \eqn{A}.}
 
 \item{m, n}{row and column dimensions of the dense constant matrix.}
 
-\item{data}{the dense constant-matrix entries (length \code{m * n},
-column-major).}
+\item{p, q, r, s}{for the Kronecker products \eqn{Z = A \otimes B}: \eqn{A} is
+\eqn{p \times q} and \eqn{B} is \eqn{r \times s}.}
+
+\item{active_blocks}{for the Kronecker products, an integer vector of 0-based
+column-major indices of the nonzero entries of the variable-free operand
+(\code{param}); only the output rows they cover are built. For a
+parametric operand pass every index, \code{0:(length - 1)}.}
+
+\item{data}{the dense constant-matrix entries in row-major order (length
+\code{m * n} for the matrix products, \code{n * n} for
+\code{sd_quad_form_dense}); for an R matrix \code{M}, pass
+\code{as.vector(t(M))}. Pass \code{numeric(0)} when the matrix comes from
+\code{param}.}
 }
 \value{
 An expression handle.
@@ -45,11 +76,28 @@ differentiated graph (and, for parameters, be updated between evaluations).
   \item{\code{sd_convolve}}{convolution of a parameter kernel with a child.}
   \item{\code{sd_quad_form}}{the quadratic form \eqn{x^\top Q x} with sparse
     constant \eqn{Q}.}
+  \item{\code{sd_quad_form_dense}}{the quadratic form \eqn{x^\top Q x} with a
+    dense symmetric \eqn{n \times n} \eqn{Q}, where \eqn{n} is the length of
+    the vector \code{child}. Supply exactly one source: \code{param = NULL}
+    and \code{data} for a constant \eqn{Q} (checked for symmetry), or a
+    parameter handle of size \eqn{n^2} with \code{data = numeric(0)} for a
+    parametric \eqn{Q} that follows \code{\link{sd_update_params}}. A
+    parametric \eqn{Q} is not checked: keeping it symmetric is the caller's
+    responsibility.}
   \item{\code{sd_left_matmul}, \code{sd_right_matmul}}{left / right product
     with a sparse constant matrix \eqn{A}.}
   \item{\code{sd_left_matmul_dense}, \code{sd_right_matmul_dense}}{left / right
-    product with a dense constant matrix.}
+    product with a dense constant or parametric matrix.}
+  \item{\code{sd_left_kron}, \code{sd_right_kron}}{the Kronecker product
+    \eqn{A \otimes B} with the variable-free operand \code{param} on the
+    left (\eqn{A}) or on the right (\eqn{B}) and the variable operand
+    \code{child} on the other side. \code{param} may be a parameter or a
+    constant made with \code{sd_parameter(..., param_id = -1, ...)}.}
 }
+A parameter cannot be the source of the sparse products
+\code{sd_left_matmul} / \code{sd_right_matmul} (the engine does not support
+it; 'sparsediffpy' accepts the argument but the engine then aborts); use the
+dense products for a parametric matrix.
 }
 \seealso{
 \code{\link{sd_parameter}}, \code{\link{sd_register_params}}
